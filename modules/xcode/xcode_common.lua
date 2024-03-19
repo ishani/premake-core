@@ -196,8 +196,8 @@
 			value(level, name)
 		elseif type(value) ~= 'table' then
 			_p(level, '%s = %s;', xcode.stringifySetting(name), xcode.stringifySetting(value))
-		--elseif #value == 1 then
-			--_p(level, '%s = %s;', xcode.stringifySetting(name), xcode.stringifySetting(value[1]))
+		elseif #value == 1 then
+			_p(level, '%s = %s;', xcode.stringifySetting(name), xcode.stringifySetting(value[1]))
 		elseif #value >= 1 then
 			_p(level, '%s = (', xcode.stringifySetting(name))
 			for _, item in ipairs(value) do
@@ -964,6 +964,12 @@
 			_p(4, '};')
 			_p(3, '};')
 		end
+
+		-- xcode project upgrade recommendation
+		-- 'parallelize build for command line tools'
+		_p(3,'attributes = {')
+		_p(3,'	BuildIndependentTargetsInParallel = YES;')
+		_p(3,'};')
 
 		_p(3,'buildConfigurationList = 1DEB928908733DD80010E9CD /* Build configuration list for PBXProject "%s" */;', tr.name)
 		_p(3,'compatibilityVersion = "Xcode 3.2";')
