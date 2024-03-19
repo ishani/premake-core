@@ -253,7 +253,7 @@
 		p.w('archiveVersion = 1;')
 		p.w('classes = {')
 		p.w('};')
-		p.w('objectVersion = 46;')
+		p.w('objectVersion = 54;')
 		p.push('objects = {')
 		p.w()
 	end
