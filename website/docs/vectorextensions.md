@@ -1,7 +1,7 @@
 Specifies the level of vector processing extensions to enable while compiling the target configuration.
 
 ```lua
-vectorextensions "level"
+vectorextensions ("level")
 ```
 
 If no value is set for a configuration, the toolset's default vector extension settings will be used.
@@ -22,6 +22,7 @@ If no value is set for a configuration, the toolset's default vector extension s
 | SSSE3       | Use the SSSE3 instruction set.                         |
 | SSE4.1      | Use the SSE4.1 instruction set.                        |
 | SSE4.2      | Use the SSE4.2 instruction set.                        |
+| ALTIVEC     | Use Altivec (ISA 2.02) instruction set.                |
 | NEON        | Use the NEON instruction set (Android only)            |
 | MXU         | Use the XBurst SIMD instructions (Android only)        |
 
@@ -31,7 +32,7 @@ Project configurations.
 
 ### Availability ###
 
-Premake 5.0.
+Premake 5.0.0-alpha1 or later.
 
 ### Examples ###
 

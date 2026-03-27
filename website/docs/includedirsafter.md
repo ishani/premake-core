@@ -16,9 +16,9 @@ Project configurations.
 
 ### Availability ###
 
-Premake 5.0 or later.
+Premake 5.0.0-alpha1 or later.
 
-GCC and Clang are the only toolsets supporting the ordering functionality in the gmake, gmake2 and Codelite exporters.  All exporters and toolsets
+GCC and Clang are the only toolsets supporting the ordering functionality in the gmakelegacy, gmake, and Codelite exporters.  All exporters and toolsets
 support appending the directories to the external include directories.
 
 ### Examples ###

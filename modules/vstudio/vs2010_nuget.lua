@@ -1,7 +1,7 @@
 --
 -- vs2010_nuget.lua
 -- Generate a NuGet packages.config file.
--- Copyright (c) Jason Perkins and the Premake project
+-- Copyright (c) Jess Perkins and the Premake project
 --
 
 	local p = premake
@@ -49,6 +49,10 @@
 --
 
 	function nuget2010.packageAPIInfo(prj, package)
+		if packageAPIInfos[package] then
+			return packageAPIInfos[package]
+		end
+
 		local id = nuget2010.packageId(package)
 		local version = nuget2010.packageVersion(package)
 
@@ -56,26 +60,17 @@
 		-- that case we can examine the nuspec file and the file listing
 		-- locally.
 
-		local function examinePackageFromCache()
-			-- It should be possible to implement this for platforms other than
-			-- Windows, but we'll need to figure out where the NuGet cache is on
-			-- these platforms (or if they even have one).
-
-			if not os.ishost("windows") then
-				return
-			end
-
-			local cachePath = path.translate(path.join(os.getenv("userprofile"), ".nuget/packages", id))
-
-			if os.isdir(cachePath) then
+		local function examinePackageFromDirectory(directory)
+			if os.isdir(directory) then
 				local packageAPIInfo = {}
 
-				printf("Examining cached NuGet package '%s'...", id)
+				printf("Examining NuGet package '%s' from '%s'...", id, path.translate(directory))
 				io.flush()
 
-				local versionPath = path.translate(path.join(cachePath, version))
+				local versionPath = path.translate(path.join(directory, version))
 
 				local nuspecPath = path.translate(path.join(versionPath, id .. ".nuspec"))
+				local nupkgPath = path.translate(path.join(versionPath, id .. "." .. version .. ".nupkg"))
 
 				if not os.isfile(nuspecPath) then
 					return
@@ -102,11 +97,21 @@
 
 				packageAPIInfo.packageEntries = {}
 
-				for _, file in ipairs(os.matchfiles(path.translate(path.join(versionPath, "**")))) do
-					local extension = path.getextension(file)
+				if zip then
+					local entries, err = zip.list(nupkgPath)
 
-					if extension ~= ".nupkg" and extension ~= ".sha512" then
-						table.insert(packageAPIInfo.packageEntries, path.translate(path.getrelative(versionPath, file)))
+					if err ~= nil then
+						p.warn("Cannot list entries of '" .. nupkgPath "'")
+					else
+						packageAPIInfo.packageEntries = entries
+					end
+				else
+					for _, file in ipairs(os.matchfiles(path.translate(path.join(versionPath, "**")))) do
+						local extension = path.getextension(file)
+
+						if extension ~= ".nupkg" and extension ~= ".sha512" then
+							table.insert(packageAPIInfo.packageEntries, path.translate(path.getrelative(versionPath, file)))
+						end
 					end
 				end
 
@@ -127,8 +132,28 @@
 			end
 		end
 
+		if os.isdir(prj.nugetsource) then
+			examinePackageFromDirectory(path.join(prj.nugetsource, id))
+
+			if packageAPIInfos[package] then
+				return packageAPIInfos[package]
+			else
+				p.error("Cannot find package '" .. package .. "' in local directory: " .. prj.nugetsource)
+			end
+		end
+
 		if not packageAPIInfos[package] then
-			examinePackageFromCache()
+			-- Examine package from cache directory
+
+			-- It should be possible to implement this for platforms other than
+			-- Windows, but we'll need to figure out where the NuGet cache is on
+			-- these platforms (or if they even have one).
+
+			if os.ishost("windows") then
+				local cachePath = path.join(os.getenv("userprofile"), ".nuget/packages", id)
+				examinePackageFromDirectory(cachePath)
+			end
+
 		end
 
 		-- If we didn't find the package from the cache, use the NuGet API
@@ -224,11 +249,30 @@
 
 			for _, page in ipairs(response.items) do
 				if not page.items or #page.items == 0 then
-					p.error("Failed to understand NuGet API response (got a page with no items for package '%s')", id)
-				end
+					local itemResponse, err, code = http.get(page["@id"])
+					if err ~= "OK" then
+						if code == 404 then
+							p.error("NuGet package '%s' for project '%s' couldn't be found in the repository", id, prj.name)
+						else
+							p.error("NuGet API error (%d)\n%s", code, err)
+						end
+					end
 
-				for _, item in ipairs(page.items) do
-					table.insert(items, item)
+					itemResponse, err = json.decode(itemResponse)
+					if not itemResponse then
+						p.error("Failed to decode NuGet API response (%s)", err)
+					end
+					if not itemResponse.items or #itemResponse.items == 0 then
+						p.error("Failed to understand NuGet API response (got a page with no items for package '%s')", id)
+					end
+
+					for _, item in ipairs(itemResponse.items) do
+						table.insert(items, item)
+					end
+				else
+					for _, item in ipairs(page.items) do
+						table.insert(items, item)
+					end
 				end
 			end
 
@@ -410,7 +454,7 @@
 
 	function nuget2010.NuGetHasHTTP(prj)
 		if not http and #prj.nuget > 0 and not nuget2010.supportsPackageReferences(prj) then
-			p.error("Premake was compiled with --no-curl, but Curl is required for NuGet support (project '%s' is referencing NuGet packages)", prj.name)
+			p.error("Premake was compiled with --curl-src=none, but Curl is required for NuGet support (project '%s' is referencing NuGet packages)", prj.name)
 		end
 	end
 

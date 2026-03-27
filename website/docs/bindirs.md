@@ -1,24 +1,24 @@
-bindirs
+Specifies extra paths to use when executing build commands
 
 ```lua
-bindirs { "directory" }
+bindirs { "directories" }
 ```
 
 ### Parameters ###
 
-`directory` - needs documentation.
+`directories` - paths containing executable to run when building command.
 
 ### Applies To ###
 
-The `config` scope.
+Workspace, project, and file configurations.
 
 ### Availability ###
 
-Premake 5.0.0 alpha 12 or later.
+Premake 5.0.0-alpha12 or later.
 
 ### Examples ###
 
 ```lua
-bindirs { "directory" }
+bindirs { "bin/", "scripts/" }
 ```
 

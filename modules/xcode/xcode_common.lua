@@ -1,7 +1,7 @@
 --
 -- xcode_common.lua
 -- Functions to generate the different sections of an Xcode project.
--- Copyright (c) 2009-2015 Jason Perkins and the Premake project
+-- Copyright (c) 2009-2015 Jess Perkins and the Premake project
 --
 
 	local p = premake
@@ -1261,7 +1261,7 @@
 			settings['EXECUTABLE_PREFIX'] = cfg.buildtarget.prefix
 		end
 
-		if cfg.buildtarget.extension then
+		if cfg.buildtarget.bundleextension then
 			local exts = {
 				WindowedApp  = "app",
 				SharedLib    = "dylib",
@@ -1270,7 +1270,7 @@
 				OSXFramework = "framework",
 				XCTest       = "xctest",
 			}
-			local ext = cfg.buildtarget.extension:sub(2)
+			local ext = iif(cfg.kind == "WindowedApp" or (cfg.kind == "SharedLib" and cfg.sharedlibtype), cfg.buildtarget.bundleextension:sub(2), cfg.buildtarget.extension:sub(2))
 			if ext ~= exts[iif(cfg.kind == "SharedLib" and cfg.sharedlibtype, cfg.sharedlibtype, cfg.kind)] then
 				if cfg.kind == "WindowedApp" or (cfg.kind == "SharedLib" and cfg.sharedlibtype) then
 					settings['WRAPPER_EXTENSION'] = ext
@@ -1309,7 +1309,7 @@
 						-- ms this seems to work on visual studio !!!
 						-- why not in xcode ??
 						local filecfg = fileconfig.getconfig(node, cfg)
-						if not filecfg or filecfg.flags.ExcludeFromBuild or filecfg.buildaction == "None" then
+						if not filecfg or filecfg.buildaction == "None" or filecfg.excludefrombuild then
 						--fileNameList = fileNameList .. " " ..filecfg.name
 							table.insert(fileNameList, xcode.escapeArg(node.name))
 						end
@@ -1347,6 +1347,15 @@
 			if family then
 				settings['TARGETED_DEVICE_FAMILY'] = family
 			end
+		elseif os.istarget(p.TVOS) then
+			settings['SDKROOT'] = 'appletvos'
+
+			settings['CODE_SIGN_IDENTITY[sdk=appletvos*]'] = cfg.xcodecodesigningidentity or 'Apple Developer'
+
+			local minOSVersion = project.systemversion(cfg)
+			if minOSVersion ~= nil then
+				settings['TVOS_DEPLOYMENT_TARGET'] = minOSVersion
+			end
 		else
 			local minOSVersion = project.systemversion(cfg)
 			if minOSVersion ~= nil then
@@ -1375,10 +1384,14 @@
 		["C90"] = "c90",
 		["C99"] = "c99",
 		["C11"] = "c11",
+		["C17"] = "c17",
+		["C23"] = "c23",
 		["gnu89"] = "gnu89",
 		["gnu90"] = "gnu90",
 		["gnu99"] = "gnu99",
-		["gnu11"] = "gnu11"
+		["gnu11"] = "gnu11",
+		["gnu17"] = "gnu17",
+		["gnu23"] = "gnu23",
 	}
 
 	function xcode.XCBuildConfiguration_CLanguageStandard(settings, cfg)
@@ -1403,18 +1416,22 @@
 		["C++1y"] = "c++14",
 		["C++14"] = "c++14",
 		["C++1z"] = "c++1z",
-		["C++17"] = "c++1z",
+		["C++17"] = "c++17",
 		["C++2a"] = "c++2a",
-		["C++20"] = "c++2a",
+		["C++20"] = "c++20",
+		["C++2b"] = "c++2b",
+		["C++23"] = "c++23",
 		["gnu++98"] = "gnu++98",
 		["gnu++0x"] = "gnu++0x",
 		["gnu++11"] = "gnu++0x",  -- Xcode project GUI uses gnu++0x, but gnu++11 also works
 		["gnu++1y"] = "gnu++14",
 		["gnu++14"] = "gnu++14",
 		["gnu++1z"] = "gnu++1z",
-		["gnu++17"] = "gnu++1z",
+		["gnu++17"] = "gnu++17",
 		["gnu++2a"] = "gnu++2a",
-		["gnu++20"] = "gnu++2a",
+		["gnu++20"] = "gnu++20",
+		["gnu++2b"] = "gnu++2b",
+		["gnu++23"] = "gnu++23",
 	}
 
 	function xcode.XCBuildConfiguration_CppLanguageStandard(settings, cfg)
@@ -1488,10 +1505,10 @@
 			settings['GCC_ENABLE_OBJC_EXCEPTIONS'] = 'NO'
 		end
 
-		local optimizeMap = { On = 3, Size = 's', Speed = 3, Full = 'fast', Debug = 1 }
+		local optimizeMap = { On = 3, Size = 's', Speed = 3, Full = 3, Debug = 'g' }
 		settings['GCC_OPTIMIZATION_LEVEL'] = optimizeMap[cfg.optimize] or 0
 
-		if cfg.pchheader and not cfg.flags.NoPCH then
+		if cfg.pchheader and cfg.enablepch ~= p.OFF then
 			settings['GCC_PRECOMPILE_PREFIX_HEADER'] = 'YES'
 			settings['GCC_PREFIX_HEADER'] = cfg.pchheader
 		end
@@ -1508,7 +1525,7 @@
 			settings['GCC_CHAR_IS_UNSIGNED_CHAR'] = iif(cfg.unsignedchar, "YES", "NO")
 		end
 
-		if cfg.flags.FatalWarnings then
+		if p.hasFatalCompileWarnings(cfg.fatalwarnings) or p.hasFatalLinkWarnings(cfg.linkerfatalwarnings) then
 			settings['GCC_TREAT_WARNINGS_AS_ERRORS'] = 'YES'
 		end
 
@@ -1532,12 +1549,12 @@
 		settings['SYSTEM_HEADER_SEARCH_PATHS'] = systemincludedirs
 
 		for i,v in ipairs(cfg.libdirs) do
-			cfg.libdirs[i] = p.project.getrelative(cfg.project, cfg.libdirs[i])
+			cfg.libdirs[i] = p.quoted(p.project.getrelative(cfg.project, cfg.libdirs[i]))
 		end
 		for i,v in ipairs(cfg.syslibdirs) do
-			cfg.syslibdirs[i] = p.project.getrelative(cfg.project, cfg.syslibdirs[i])
+			cfg.syslibdirs[i] = p.quoted(p.project.getrelative(cfg.project, cfg.syslibdirs[i]))
 		end
-		settings['LIBRARY_SEARCH_PATHS'] = table.join (cfg.libdirs, cfg.syslibdirs)
+		settings['LIBRARY_SEARCH_PATHS'] = table.join(cfg.libdirs, cfg.syslibdirs)
 
 		for i,v in ipairs(cfg.frameworkdirs) do
 			cfg.frameworkdirs[i] = p.project.getrelative(cfg.project, cfg.frameworkdirs[i])
@@ -1554,7 +1571,7 @@
 
 		-- build list of "other" C/C++ flags
 		local checks = {
-			["-ffast-math"]             = cfg.floatingpoint == "Fast",
+			["-ffast-math"]             = cfg.floatingpoint == "Fast" or cfg.optimize == "Full",
 			["-fomit-frame-pointer"]    = cfg.omitframepointer == "On",
 			["-fno-omit-frame-pointer"] = cfg.omitframepointer == "Off",
 			["-fopenmp"]                = cfg.openmp == "On"
@@ -1577,6 +1594,10 @@
 
 		settings['OTHER_CFLAGS'] = table.join(flags, cfg.buildoptions)
 
+		if cfg.structmemberalign then
+			table.insert(settings['OTHER_CFLAGS'], "-fpack-struct=" .. tostring(cfg.structmemberalign))
+		end
+
 		-- build list of "other" linked flags.
 		flags = { }
 		for _, lib in ipairs(config.getlinks(cfg, "system")) do
@@ -1594,9 +1615,9 @@
 			end
 		end
 
-		settings['OTHER_LDFLAGS'] = table.join(flags, cfg.linkoptions)
+		settings['OTHER_LDFLAGS'] = table.join(flags, cfg.linkoptions, toolset.wholearchive(cfg))
 
-		if cfg.flags.StaticRuntime then
+		if cfg.staticruntime == "On" then
 			settings['STANDARD_C_PLUS_PLUS_LIBRARY_TYPE'] = 'static'
 		end
 
@@ -1612,6 +1633,61 @@
 			settings['WARNING_CFLAGS'] = '-Wall -Wextra'
 		elseif cfg.warnings == "Everything" then
 			settings['WARNING_CFLAGS'] = '-Weverything'
+			settings["CLANG_WARN_ASSIGN_ENUM"] = "YES"
+			settings["CLANG_WARN_ATOMIC_IMPLICIT_SEQ_CST"] = "YES"
+			settings["CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING"] = "YES"
+			settings["CLANG_WARN_BOOL_CONVERSION"] = "YES"
+			settings["CLANG_WARN_COMMA"] = "YES"
+			settings["CLANG_WARN_COMPLETION_HANDLER_MISUSE"] = "YES"
+			settings["CLANG_WARN_CONSTANT_CONVERSION"] = "YES"
+			settings["CLANG_WARN_CXX0X_EXTENSIONS"] = "YES"
+			settings["CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS"] = "YES"
+			settings["CLANG_WARN_EMPTY_BODY"] = "YES"
+			settings["CLANG_WARN_ENUM_CONVERSION"] = "YES"
+			settings["CLANG_WARN_FLOAT_CONVERSION"] = "YES"
+			settings["CLANG_WARN_FRAMEWORK_INCLUDE_PRIVATE_FROM_PUBLIC"] = "YES"
+			settings["CLANG_WARN_IMPLICIT_FALLTHROUGH"] = "YES"
+			settings["CLANG_WARN_IMPLICIT_SIGN_CONVERSION"] = "YES"
+			settings["CLANG_WARN_INFINITE_RECURSION"] = "YES"
+			settings["CLANG_WARN_INT_CONVERSION"] = "YES"
+			settings["CLANG_WARN_NON_LITERAL_NULL_CONVERSION"] = "YES"
+			settings["CLANG_WARN_OBJC_EXPLICIT_OWNERSHIP_TYPE"] = "YES"
+			settings["CLANG_WARN_OBJC_IMPLICIT_ATOMIC_PROPERTIES"] = "YES"
+			settings["CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF"] = "YES"
+			settings["CLANG_WARN_OBJC_INTERFACE_IVARS"] = "YES"
+			settings["CLANG_WARN_OBJC_LITERAL_CONVERSION"] = "YES"
+			settings["CLANG_WARN_OBJC_MISSING_PROPERTY_SYNTHESIS"] = "YES"
+			settings["CLANG_WARN_OBJC_REPEATED_USE_OF_WEAK"] = "YES"
+			settings["CLANG_WARN_PRAGMA_PACK"] = "YES"
+			settings["CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER"] = "YES"
+			settings["CLANG_WARN_RANGE_LOOP_ANALYSIS"] = "YES"
+			settings["CLANG_WARN_SEMICOLON_BEFORE_METHOD_BODY"] = "YES"
+			settings["CLANG_WARN_STRICT_PROTOTYPES"] = "YES"
+			settings["CLANG_WARN_SUSPICIOUS_IMPLICIT_CONVERSION"] = "YES"
+			settings["CLANG_WARN_SUSPICIOUS_MOVE"] = "YES"
+			settings["CLANG_WARN_UNREACHABLE_CODE"] = "YES"
+			settings["CLANG_WARN__DUPLICATE_METHOD_MATCH"] = "YES"
+			settings["CLANG_WARN__EXIT_TIME_DESTRUCTORS"] = "YES"
+			settings["GCC_WARN_64_TO_32_BIT_CONVERSION"] = "YES"
+			settings["GCC_WARN_ABOUT_MISSING_FIELD_INITIALIZERS"] = "YES"
+			settings["GCC_WARN_ABOUT_MISSING_NEWLINE"] = "YES"
+			settings["GCC_WARN_ABOUT_MISSING_PROTOTYPES"] = "YES"
+			settings["GCC_WARN_ABOUT_RETURN_TYPE"] = "YES"
+			settings["GCC_WARN_HIDDEN_VIRTUAL_FUNCTIONS"] = "YES"
+			settings["GCC_WARN_INHIBIT_ALL_WARNINGS"] = "NO"
+			settings["GCC_WARN_INITIALIZER_NOT_FULLY_BRACKETED"] = "YES"
+			settings["GCC_WARN_NON_VIRTUAL_DESTRUCTOR"] = "YES"
+			settings["GCC_WARN_PEDANTIC"] = "YES"
+			settings["GCC_WARN_SHADOW"] = "YES"
+			settings["GCC_WARN_SIGN_COMPARE"] = "YES"
+			settings["GCC_WARN_STRICT_SELECTOR_MATCH"] = "YES"
+			settings["GCC_WARN_UNDECLARED_SELECTOR"] = "YES"
+			settings["GCC_WARN_UNINITIALIZED_AUTOS"] = "YES"
+			settings["GCC_WARN_UNKNOWN_PRAGMAS"] = "YES"
+			settings["GCC_WARN_UNUSED_FUNCTION"] = "YES"
+			settings["GCC_WARN_UNUSED_LABEL"] = "YES"
+			settings["GCC_WARN_UNUSED_PARAMETER"] = "YES"
+			settings["GCC_WARN_UNUSED_VARIABLE"] = "YES"
 		end
 
 		xcode.XCBuildConfiguration_SwiftLanguageVersion(settings, cfg)

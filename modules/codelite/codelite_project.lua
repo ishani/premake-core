@@ -6,7 +6,7 @@
 --              Manu Evans
 --              Tom van Dijck
 -- Created:     2013/05/06
--- Copyright:   (c) 2008-2016 Jason Perkins and the Premake project
+-- Copyright:   (c) 2008-2016 Jess Perkins and the Premake project
 --
 
 	local p = premake
@@ -133,7 +133,7 @@
 				for cfg in project.eachconfig(prj) do
 					local cfgname = codelite.cfgname(cfg)
 					local fcfg = p.fileconfig.getconfig(node, cfg)
-					if not fcfg or fcfg.flags.ExcludeFromBuild or fcfg.buildaction == "None" then
+					if not fcfg or fcfg.excludefrombuild or fcfg.buildaction == "None" then
 						table.insert(excludesFromBuild, cfgname)
 					end
 				end
@@ -282,7 +282,7 @@
 		local workingdir = iif(isExe, project.getrelative(prj, cfg.debugdir), "")
 		local pauseexec  = iif(prj.kind == "ConsoleApp", "yes", "no")
 		local isguiprogram = iif(prj.kind == "WindowedApp", "yes", "no")
-		local isenabled  = iif(cfg.flags.ExcludeFromBuild, "no", "yes")
+		local isenabled  = iif(cfg.excludefrombuild, "no", "yes")
 
 		_x(3, '<General OutputFile="%s" IntermediateDirectory="%s" Command="%s" CommandArguments="%s" UseSeparateDebugArgs="%s" DebugArguments="%s" WorkingDirectory="%s" PauseExecWhenProcTerminates="%s" IsGUIProgram="%s" IsEnabled="%s"/>',
 			targetname, objdir, command, cmdargs, useseparatedebugargs, debugargs, workingdir, pauseexec, isguiprogram, isenabled)
@@ -325,7 +325,7 @@
 	end
 
 	function m.preBuild(cfg)
-		if #cfg.prebuildcommands > 0 or cfg.prebuildmessage then
+		if #cfg.prebuildcommands > 0 or cfg.prebuildmessage or #cfg.prelinkcommands > 0 or cfg.prelinkmessage then
 			_p(3, '<PreBuild>')
 			p.escaper(codelite.escElementText)
 			if cfg.prebuildmessage then
@@ -333,6 +333,17 @@
 				_x(4, '<Command Enabled="yes">%s</Command>', command)
 			end
 			local commands = os.translateCommandsAndPaths(cfg.prebuildcommands, cfg.project.basedir, cfg.project.location)
+			for _, command in ipairs(commands) do
+				_x(4, '<Command Enabled="yes">%s</Command>', command)
+			end
+			if #cfg.prelinkcommands then
+				p.warnOnce("codelite_prelink", "prelinkcommands is treated as prebuildcommands by Codelite")
+			end
+			if cfg.prelinkmessage then
+				local command = os.translateCommandsAndPaths("@{ECHO} " .. p.quote(cfg.prelinkmessage), cfg.project.basedir, cfg.project.location)
+				_x(4, '<Command Enabled="yes">%s</Command>', command)
+			end
+			local commands = os.translateCommandsAndPaths(cfg.prelinkcommands, cfg.project.basedir, cfg.project.location)
 			for _, command in ipairs(commands) do
 				_x(4, '<Command Enabled="yes">%s</Command>', command)
 			end

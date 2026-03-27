@@ -1,7 +1,7 @@
 --
 -- tests/actions/vstudio/vc2010/test_compile_settings.lua
 -- Validate compiler settings in Visual Studio 2019 C/C++ projects.
--- Copyright (c) 2011-2020 Jason Perkins and the Premake project
+-- Copyright (c) 2011-2020 Jess Perkins and the Premake project
 --
 
 	local p = premake
@@ -94,6 +94,24 @@
 	end
 
 --
+-- Check StructMemberAlignment
+--
+
+	function suite.structMemberAlignmentWithClang()
+		toolset "clang"
+		structmemberalign(2)
+		prepare()
+		test.capture [[
+<ClCompile>
+	<PrecompiledHeader>NotUsing</PrecompiledHeader>
+	<WarningLevel>Level3</WarningLevel>
+	<Optimization>Disabled</Optimization>
+	<AdditionalOptions>/Zp2 %(AdditionalOptions)</AdditionalOptions>
+	<StructMemberAlignment>2Bytes</StructMemberAlignment>
+]]
+	end
+
+--
 -- Check ClCompile for ScanForModuleDependencies
 --
 
@@ -172,5 +190,68 @@
 	<Optimization>Disabled</Optimization>
 	<ExternalWarningLevel>Level3</ExternalWarningLevel>
 	<EnableModules>true</EnableModules>
+		]]
+	end
+
+--
+-- Disable specific warnings.
+--
+
+	function suite.disableSpecificWarningsWithClang()
+		disablewarnings { "warningID" }
+		toolset "clang"
+		prepare()
+		test.capture [[
+<ClCompile>
+	<PrecompiledHeader>NotUsing</PrecompiledHeader>
+	<WarningLevel>Level3</WarningLevel>
+	<Optimization>Disabled</Optimization>
+	<AdditionalOptions>-Wno-warningID %(AdditionalOptions)</AdditionalOptions>
+		]]
+	end
+
+--
+-- Fatal specific warnings.
+--
+
+	function suite.fatalSpecificWarningsWithClang()
+		fatalwarnings { "warningID" }
+		toolset "clang"
+		prepare()
+		test.capture [[
+<ClCompile>
+	<PrecompiledHeader>NotUsing</PrecompiledHeader>
+	<WarningLevel>Level3</WarningLevel>
+	<Optimization>Disabled</Optimization>
+	<AdditionalOptions>-Werror=warningID %(AdditionalOptions)</AdditionalOptions>
+		]]
+	end
+
+--
+-- Enable specific warnings.
+--
+
+	function suite.enableSpecificWarnings()
+		enablewarnings { "warningID" }
+		prepare()
+		test.capture [[
+<ClCompile>
+	<PrecompiledHeader>NotUsing</PrecompiledHeader>
+	<WarningLevel>Level3</WarningLevel>
+	<Optimization>Disabled</Optimization>
+	<AdditionalOptions>/w1warningID %(AdditionalOptions)</AdditionalOptions>
+		]]
+	end
+
+	function suite.enableSpecificWarningsWithClang()
+		enablewarnings { "warningID" }
+		toolset "clang"
+		prepare()
+		test.capture [[
+<ClCompile>
+	<PrecompiledHeader>NotUsing</PrecompiledHeader>
+	<WarningLevel>Level3</WarningLevel>
+	<Optimization>Disabled</Optimization>
+	<AdditionalOptions>-WwarningID %(AdditionalOptions)</AdditionalOptions>
 		]]
 	end

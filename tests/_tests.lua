@@ -1,5 +1,6 @@
 return {
 	-- Base API tests
+	"test_lua.lua",
 	"test_string.lua",
 	"base/test_aliasing.lua",
 	"base/test_binmodules.lua",
@@ -43,6 +44,7 @@ return {
 	-- Baking tests
 	"oven/test_filtering.lua",
 	"oven/test_objdirs.lua",
+	"oven/test_usages.lua",
 
 	-- API tests
 	"api/test_boolean_kind.lua",
@@ -62,7 +64,15 @@ return {
 
 	-- -- Toolset tests
 	"tools/test_dotnet.lua",
+	"tools/test_emcc.lua",
 	"tools/test_gcc.lua",
 	"tools/test_clang.lua",
 	"tools/test_msc.lua",
+	"tools/test_enablepch.lua",
+	"tools/test_incrementallink.lua",
+	"tools/test_manifest.lua",
+	"tools/test_minimalrebuild.lua",
+	"tools/test_nodefaultlib.lua",
+	"tools/test_userelativelinks.lua",
+	"tools/test_wpf.lua",
 }

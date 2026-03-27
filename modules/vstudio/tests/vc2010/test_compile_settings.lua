@@ -1,7 +1,7 @@
 --
 -- tests/actions/vstudio/vc2010/test_compile_settings.lua
 -- Validate compiler settings in Visual Studio 2010 C/C++ projects.
--- Copyright (c) 2011-2013 Jason Perkins and the Premake project
+-- Copyright (c) 2011-2013 Jess Perkins and the Premake project
 --
 
 	local p = premake
@@ -68,7 +68,7 @@
 
 	function suite.noPrecompiledHeaders_onNoPCH()
 		pchheader "afxwin.h"
-		flags "NoPCH"
+		enablepch "Off"
 		prepare()
 		test.capture [[
 <ClCompile>
@@ -150,14 +150,15 @@
 -- not be generated.
 --
 
-	function suite.warningLevel_onNoWarningsOverOtherWarningsFlags()
-		flags { "FatalWarnings" }
+	function suite.warningLevel_onNoWarningsOverOtherWarningsAPI()
+		fatalwarnings { "All" }
 		warnings "Off"
 		prepare()
 		test.capture [[
 <ClCompile>
 	<PrecompiledHeader>NotUsing</PrecompiledHeader>
 	<WarningLevel>TurnOffAllWarnings</WarningLevel>
+	<Optimization>Disabled</Optimization>
 		]]
 	end
 
@@ -401,7 +402,7 @@
 --
 
 	function suite.minimalRebuild_onNoMinimalRebuild()
-		flags "NoMinimalRebuild"
+		minimalrebuild "Off"
 		prepare()
 		test.capture [[
 <ClCompile>
@@ -417,7 +418,7 @@
 --
 
 	function suite.minimalRebuild_onC7()
-		debugformat "C7"
+		debugformat("c7")
 		prepare()
 		test.capture [[
 <ClCompile>
@@ -544,8 +545,9 @@
 -- Add <TreatWarningAsError> if FatalWarnings flag is set.
 --
 
-	function suite.treatWarningsAsError_onFatalWarnings()
-		flags { "FatalCompileWarnings" }
+
+	function suite.treatWarningsAsError_onFatalWarningsViaAPI()
+		fatalwarnings { "All" }
 		prepare()
 		test.capture [[
 <ClCompile>
@@ -627,7 +629,7 @@
 
 	function suite.onC7DebugFormat()
 		symbols "On"
-		debugformat "c7"
+		debugformat("c7")
 		prepare()
 		test.capture [[
 <ClCompile>
@@ -635,7 +637,8 @@
 	<WarningLevel>Level3</WarningLevel>
 	<DebugInformationFormat>OldStyle</DebugInformationFormat>
 	<Optimization>Disabled</Optimization>
-		]]
+	<MinimalRebuild>false</MinimalRebuild>
+	]]
 	end
 
 
@@ -644,7 +647,7 @@
 --
 
 	function suite.wchar_onNative()
-		flags "NativeWChar"
+		nativewchar "On"
 		prepare()
 		test.capture [[
 <ClCompile>
@@ -656,7 +659,7 @@
 	end
 
 	function suite.wchar_onNoNative()
-		flags "NoNativeWChar"
+		nativewchar "Off"
 		prepare()
 		test.capture [[
 <ClCompile>
@@ -711,7 +714,7 @@
 	end
 
 	function suite.runtimeTypeInfo_onNoBufferSecurityCheck()
-		flags "NoBufferSecurityCheck"
+		buffersecuritycheck "Off"
 		prepare()
 		test.capture [[
 <ClCompile>
@@ -722,6 +725,17 @@
 		]]
 	end
 
+	function suite.runtimeTypeInfo_onBufferSecurityCheck()
+		buffersecuritycheck "On"
+		prepare()
+		test.capture [[
+<ClCompile>
+	<PrecompiledHeader>NotUsing</PrecompiledHeader>
+	<WarningLevel>Level3</WarningLevel>
+	<Optimization>Disabled</Optimization>
+	<BufferSecurityCheck>true</BufferSecurityCheck>
+		]]
+	end
 
 --
 -- On Win32 builds, use the Edit-and-Continue debug information format.
@@ -853,11 +867,11 @@
 
 
 --
--- Check handling of the NoRuntimeChecks flag.
+-- Check handling of the runtimechecks API with "Off" value.
 --
 
-	function suite.onNoRuntimeChecks()
-		flags { "NoRuntimeChecks" }
+	function suite.onRuntimeChecks_Off()
+		runtimechecks "Off"
 		prepare()
 		test.capture [[
 <ClCompile>
@@ -869,11 +883,43 @@
 
 
 --
+-- Check handling of the runtimechecks API with "FastChecks" value.
+--
+
+	function suite.onRuntimeChecks_FastChecks()
+		runtimechecks "FastChecks"
+		prepare()
+		test.capture [[
+<ClCompile>
+	<PrecompiledHeader>NotUsing</PrecompiledHeader>
+	<WarningLevel>Level3</WarningLevel>
+	<BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
+		]]
+	end
+
+
+--
+-- Check handling of the runtimechecks API with "Default" value.
+--
+
+	function suite.onRuntimeChecks_Default()
+		runtimechecks "Default"
+		prepare()
+		test.capture [[
+<ClCompile>
+	<PrecompiledHeader>NotUsing</PrecompiledHeader>
+	<WarningLevel>Level3</WarningLevel>
+	<Optimization>Disabled</Optimization>
+		]]
+	end
+
+
+--
 -- Check handling of the EnableMultiProcessorCompile flag.
 --
 
 	function suite.onMultiProcessorCompile()
-		flags { "MultiProcessorCompile" }
+		multiprocessorcompile "On"
 		prepare()
 		test.capture [[
 <ClCompile>
@@ -938,11 +984,11 @@
 
 
 --
--- Check handling of the OmitDefaultLibrary flag.
+-- Check handling of the nodefaultlib API.
 --
 
 	function suite.onOmitDefaultLibrary()
-		flags { "OmitDefaultLibrary" }
+		nodefaultlib "On"
 		prepare()
 		test.capture [[
 <ClCompile>
@@ -1371,6 +1417,53 @@
 		]]
 	end
 
+	function suite.onLanguage_Cpp23_VS2017()
+		p.action.set("vs2017")
+
+		cppdialect 'C++23'
+		prepare()
+		test.capture [[
+<ClCompile>
+	<PrecompiledHeader>NotUsing</PrecompiledHeader>
+	<WarningLevel>Level3</WarningLevel>
+	<Optimization>Disabled</Optimization>
+	<LanguageStandard>stdcpplatest</LanguageStandard>
+</ClCompile>
+		]]
+	end
+
+	function suite.onLanguage_Cpp23_VS2019()
+		p.action.set("vs2019")
+
+		cppdialect 'C++23'
+		prepare()
+		test.capture [[
+<ClCompile>
+	<PrecompiledHeader>NotUsing</PrecompiledHeader>
+	<WarningLevel>Level3</WarningLevel>
+	<Optimization>Disabled</Optimization>
+	<LanguageStandard>stdcpplatest</LanguageStandard>
+	<ExternalWarningLevel>Level3</ExternalWarningLevel>
+</ClCompile>
+		]]
+	end
+
+	function suite.onLanguage_Cpp23_VS2022()
+		p.action.set("vs2022")
+
+		cppdialect 'C++23'
+		prepare()
+		test.capture [[
+<ClCompile>
+	<PrecompiledHeader>NotUsing</PrecompiledHeader>
+	<WarningLevel>Level3</WarningLevel>
+	<Optimization>Disabled</Optimization>
+	<LanguageStandard>stdcpp23</LanguageStandard>
+	<ExternalWarningLevel>Level3</ExternalWarningLevel>
+</ClCompile>
+		]]
+	end
+
 	function suite.onLanguage_C11_VS2019()
 		p.action.set("vs2019")
 
@@ -1398,6 +1491,22 @@
 	<WarningLevel>Level3</WarningLevel>
 	<Optimization>Disabled</Optimization>
 	<LanguageStandard_C>stdc17</LanguageStandard_C>
+	<ExternalWarningLevel>Level3</ExternalWarningLevel>
+</ClCompile>
+		]]
+	end
+
+	function suite.onLanguage_C23_VS2019()
+		p.action.set("vs2019")
+
+		cdialect 'C23'
+		prepare()
+		test.capture [[
+<ClCompile>
+	<PrecompiledHeader>NotUsing</PrecompiledHeader>
+	<WarningLevel>Level3</WarningLevel>
+	<Optimization>Disabled</Optimization>
+	<LanguageStandard_C>stdclatest</LanguageStandard_C>
 	<ExternalWarningLevel>Level3</ExternalWarningLevel>
 </ClCompile>
 		]]
@@ -1584,19 +1693,6 @@
 	<WarningLevel>Level3</WarningLevel>
 	<Optimization>Disabled</Optimization>
 	<OmitFramePointers>false</OmitFramePointers>
-</ClCompile>
-		]]
-	end
-
-	function suite.omitFramePointer_DeprecationFlag()
-		flags "NoFramePointer"
-		prepare()
-		test.capture [[
-<ClCompile>
-	<PrecompiledHeader>NotUsing</PrecompiledHeader>
-	<WarningLevel>Level3</WarningLevel>
-	<Optimization>Disabled</Optimization>
-	<OmitFramePointers>true</OmitFramePointers>
 </ClCompile>
 		]]
 	end

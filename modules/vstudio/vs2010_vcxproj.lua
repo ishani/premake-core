@@ -1,7 +1,7 @@
 --
 -- vs2010_vcxproj.lua
 -- Generate a Visual Studio 201x C/C++ project.
--- Copyright (c) Jason Perkins and the Premake project
+-- Copyright (c) Jess Perkins and the Premake project
 --
 
 	local p = premake
@@ -158,6 +158,19 @@
 		}
 	end
 
+	m.elements.androidGlobals = function(prj)
+
+		return {
+			-- Common
+			m.projectGuid,
+			m.projectName,
+
+			-- Android
+			m.androidApplicationType,
+		}
+
+	end
+
 	m.elements.globalsCondition = function(prj, cfg)
 		return {
 			m.windowsTargetPlatformVersion,
@@ -174,15 +187,29 @@
 		end
 	end
 
+	m.elements.androidGlobalsCondition = function(prj, cfg)
+		if cfg.system ~= prj.system then
+			return {
+				m.androidApplicationType
+			}
+		end
+	end
+
 	function m.globals(prj)
 
 		-- Write out the project-level globals
 		m.propertyGroup(nil, "Globals")
+
+		local globalElements
+
 		if prj.system == p.LINUX then
 			p.callArray(m.elements.linuxGlobals, prj)
+		elseif prj.system == p.ANDROID then
+			p.callArray(m.elements.androidGlobals, prj)
 		else
 			p.callArray(m.elements.globals, prj)
 		end
+
 		p.pop('</PropertyGroup>')
 
 		-- Write out the configurable globals
@@ -191,6 +218,8 @@
 			local globalsConditionFunction
 			if cfg.system == p.LINUX then
 				globalsConditionFunction = m.elements.linuxGlobalsCondition
+			elseif cfg.system == p.ANDROID then
+				globalsConditionFunction = m.elements.androidGlobalsCondition
 			else
 				globalsConditionFunction = m.elements.globalsCondition
 			end
@@ -224,6 +253,7 @@
 			return {
 				m.configurationType,
 				m.platformToolset,
+				m.llvmTools,
 				m.toolsVersion,
 			}
 		else
@@ -238,6 +268,7 @@
 				m.enableUnityBuild,
 				m.sanitizers,
 				m.toolsVersion,
+				m.llvmTools,
 				m.wholeProgramOptimization,
 				m.nmakeOutDirs,
 				m.windowsSDKDesktopARMSupport,
@@ -277,10 +308,36 @@
 		end
 	end
 
+	m.elements.androidConfigurationProperties = function(cfg)
+		if cfg.kind == p.UTILITY then
+			return {
+				-- Common
+				m.configurationType,
+
+				-- Android
+				m.androidPlatformToolset,
+			}
+		else
+			return {
+				-- Common
+				m.configurationType,
+				m.nmakeOutDirs,
+
+				-- Android
+				m.androidPlatformToolset,
+				m.androidAPILevel,
+				m.androidStlType,
+				m.thumbMode
+			}
+		end
+	end
+
 	function m.configurationProperties(cfg)
 		m.propertyGroup(cfg, "Configuration")
 		if cfg.system == p.LINUX then
 			p.callArray(m.elements.linuxConfigurationProperties, cfg)
+		elseif cfg.system == p.ANDROID then
+			p.callArray(m.elements.androidConfigurationProperties, cfg)
 		else
 			p.callArray(m.elements.configurationProperties, cfg)
 		end
@@ -292,8 +349,6 @@
 			m.configurationProperties(cfg)
 		end
 	end
-
-
 
 --
 -- Write the output property group, which includes the output and intermediate
@@ -338,6 +393,33 @@
 			}
 		else
 			return {
+				m.outDir,
+				m.intDir,
+				m.targetName,
+				m.targetExt,
+				m.libraryPath,
+				m.extensionsToDeleteOnClean,
+				m.executablePath,
+
+				-- Linux
+				m.linuxExternalIncludeDirs,
+				m.linuxMultiProcNumber
+			}
+		end
+
+	end
+
+	m.elements.androidOutputProperties = function(cfg)
+
+		if cfg.kind == p.UTILITY then
+			return {
+				m.intDir,
+				m.extensionsToDeleteOnClean,
+				m.executablePath,
+			}
+		else
+			return {
+				m.outDir,
 				m.intDir,
 				m.targetName,
 				m.targetExt,
@@ -345,6 +427,9 @@
 				m.libraryPath,
 				m.extensionsToDeleteOnClean,
 				m.executablePath,
+
+				-- Android
+				m.androidUseMultiToolTask,
 			}
 		end
 
@@ -355,9 +440,11 @@
 			m.propertyGroup(cfg)
 
 			if cfg.system == p.LINUX then
-			p.callArray(m.elements.linuxOutputProperties, cfg)
+				p.callArray(m.elements.linuxOutputProperties, cfg)
+			elseif cfg.system == p.ANDROID then
+				p.callArray(m.elements.androidOutputProperties, cfg)
 			else
-			p.callArray(m.elements.outputProperties, cfg)
+				p.callArray(m.elements.outputProperties, cfg)
 			end
 
 			p.pop('</PropertyGroup>')
@@ -440,7 +527,6 @@
 			p.push('<ItemDefinitionGroup %s>', m.condition(cfg))
 			p.callArray(m.elements.itemDefinitionGroup, cfg)
 			p.pop('</ItemDefinitionGroup>')
-
 		else
 			if cfg == project.getfirstconfig(cfg.project) then
 				p.w('<ItemDefinitionGroup>')
@@ -511,6 +597,7 @@
 			m.useStandardPreprocessor,
 			m.enableModules,
 			m.buildStlModules,
+			m.useDynamicDebugging,
 		}
 
 		if cfg.kind == p.STATICLIB then
@@ -540,15 +627,50 @@
 			m.linuxLanguageStandardCpp,
 			m.linuxLanguageStandardC,
 			m.linuxWarningLevel,
+			m.linuxLinkTimeCodeGeneration,
 		}
 
 		return calls
+	end
+
+	m.elements.androidClCompile = function(cfg)
+
+		local calls = {
+			m.treatWarningAsError,
+			m.clCompileUndefinePreprocessorDefinitions,
+			m.clCompileAdditionalIncludeDirectories,
+			m.forceIncludes,
+			m.compileAs,
+			m.omitFramePointers,
+
+			-- Android
+			m.precompiledHeader, -- Overwrite a portion of it for Android
+			m.androidClCompilePreprocessorDefinitions,
+			m.androidDebugInformationFormat,
+			m.androidStrictAliasing,
+			m.androidFloatAbi,
+			m.androidPIC,
+			m.androidShortEnums,
+			m.androidLinkSections,
+			m.androidLanguageStandardC,
+			m.androidLanguageStandardCpp,
+			m.androidOptimization,
+			m.androidEnableEnhancedInstructionSet,
+			m.androidExceptionHandling,
+			m.androidRuntimeTypeInfo,
+			m.gccClangAdditionalCompileOptions,
+		}
+
+		return calls
+
 	end
 
 	function m.clCompile(cfg)
 		p.push('<ClCompile>')
 		if cfg.system == p.LINUX then
 			p.callArray(m.elements.linuxClCompile, cfg)
+		elseif cfg.system == p.ANDROID then
+			p.callArray(m.elements.androidClCompile, cfg)
 		else
 			p.callArray(m.elements.clCompile, cfg)
 		end
@@ -673,6 +795,8 @@
 				m.fullProgramDatabaseFile,
 				m.generateDebugInformation,
 				m.optimizeReferences,
+				m.linkTimeCodeGeneration,
+				m.useDynamicDebugging,
 			}
 		else
 			return {
@@ -680,7 +804,9 @@
 				m.fullProgramDatabaseFile,
 				m.generateDebugInformation,
 				m.optimizeReferences,
+				m.linkTimeCodeGeneration,
 				m.additionalDependencies,
+				m.useDynamicDebugging,
 				m.additionalLibraryDirectories,
 				m.importLibrary,
 				m.entryPointSymbol,
@@ -693,6 +819,7 @@
 				m.additionalLinkOptions,
 				m.programDatabaseFile,
 				m.assemblyDebug,
+				m.profile,
 			}
 		end
 	end
@@ -712,11 +839,30 @@
 		end
 	end
 
+	m.elements.androidLink = function(cfg, explicit)
+		if cfg.kind == p.STATICLIB then
+			return {}
+		else
+			return {
+				-- Common
+				m.additionalLibraryDirectories,
+				m.additionalLinkOptions,
+				m.ignoreDefaultLibraries,
+
+				-- Android
+				m.androidAdditionalDependencies,
+				m.androidGenerateMapFile,
+			}
+		end
+	end
+
 	function m.link(cfg, explicit)
 		local contents = p.capture(function ()
 			p.push()
 			if cfg.system == p.LINUX then
 				p.callArray(m.elements.linuxLink, cfg, explicit)
+			elseif cfg.system == p.ANDROID then
+				p.callArray(m.elements.androidLink, cfg, explicit)
 			else
 				p.callArray(m.elements.link, cfg, explicit)
 			end
@@ -739,6 +885,7 @@
 				m.treatLinkerWarningAsErrors,
 				m.targetMachine,
 				m.additionalLinkOptions,
+				m.useDynamicDebugging,
 			}
 		else
 			return {}
@@ -963,6 +1110,8 @@
 			m.objectFileName,
 			m.clCompilePreprocessorDefinitions,
 			m.clCompileUndefinePreprocessorDefinitions,
+			m.languageStandard,
+			m.languageStandardC,
 			m.optimization,
 			m.forceIncludes,
 			m.forceUsings,
@@ -1001,7 +1150,39 @@
 			-- Linux
 			m.linuxWarningLevel,
 			m.linuxExceptionHandling,
-			m.linuxPIC
+			m.linuxPIC,
+			m.gccClangAdditionalCompileOptions,
+			m.linuxLinkTimeCodeGeneration,
+		}
+
+	end
+
+	m.androidFileConfigFunction = function(fcfg, condition)
+
+		return {
+			-- Common
+			m.excludedFromBuild,
+			m.objectFileName,
+			m.clCompilePreprocessorDefinitions,
+			m.clCompileUndefinePreprocessorDefinitions,
+			m.forceIncludes,
+			m.compileAs,
+
+			-- Android
+			m.androidDebugInformationFormat,
+			m.androidStrictAliasing,
+			m.androidFloatAbi,
+			m.androidPIC,
+			m.androidShortEnums,
+			m.androidLinkSections,
+			m.androidLanguageStandardC,
+			m.androidLanguageStandardCpp,
+			m.androidOptimization,
+			m.androidEnableEnhancedInstructionSet,
+			m.androidExceptionHandling,
+			m.androidRuntimeTypeInfo,
+			m.androidAdditionalCompileOptions,
+			m.gccClangAdditionalCompileOptions,
 		}
 
 	end
@@ -1016,6 +1197,8 @@
 				if fcfg then
 					if fcfg.system == p.LINUX then
 						return m.linuxFileConfigFunction(fcfg, condition)
+					elseif fcfg.system == p.ANDROID then
+						return m.androidFileConfigFunction(fcfg, condition)
 					else
 						return m.fileConfigFunction(fcfg, condition)
 					end
@@ -1300,6 +1483,104 @@
 	}
 
 ---
+-- Android categories
+---
+
+	function m.androidCategoryLink(cfg, file)
+		-- default the separator to '/' as that is what is searched for
+		-- below. Otherwise the function will use target separator which
+		-- could be '\\' and result in failure to create links.
+		local fname = path.translate(file.relpath, '/')
+
+		-- Files that live outside of the project tree need to be "linked"
+		-- and provided with a project relative pseudo-path. Check for any
+		-- leading "../" sequences and, if found, remove them and mark this
+		-- path as external.
+		local link, count = fname:gsub("%.%.%/", "")
+		local external = (count > 0) or fname:find(':', 1, true) or (file.vpath and file.vpath ~= file.relpath)
+
+		-- Try to provide a little bit of flexibility by allowing virtual
+		-- paths for external files. Would be great to support them for all
+		-- files but Visual Studio chokes if file is already in project area.
+		if external and file.vpath ~= file.relpath then
+			link = file.vpath
+		end
+
+		if external then
+			m.element("Link", nil, path.translate(link))
+		end
+	end
+
+	function m.androidManifestSubType(cfg, file)
+		m.element("SubType", nil, "Designer")
+	end
+
+	m.categories.AndroidManifest = {
+		name = "AndroidManifest",
+		priority = 99,
+
+		emitFiles = function(prj, group)
+			m.emitFiles(prj, group, "AndroidManifest", {m.generatedFile, m.androidCategoryLink, m.androidManifestSubType})
+		end,
+
+		emitFilter = function(prj, group)
+			m.filterGroup(prj, group, "AndroidManifest")
+		end
+	}
+
+	m.categories.AntBuildXml = {
+		name = "AntBuildXml",
+		priority = 99,
+
+		emitFiles = function(prj, group)
+			m.emitFiles(prj, group, "AntBuildXml", {m.generatedFile, m.androidCategoryLink})
+		end,
+
+		emitFilter = function(prj, group)
+			m.filterGroup(prj, group, "AntBuildXml")
+		end
+	}
+
+	m.categories.AntProjectPropertiesFile = {
+		name = "AntProjectPropertiesFile",
+		priority = 99,
+
+		emitFiles = function(prj, group)
+			m.emitFiles(prj, group, "AntProjectPropertiesFile", {m.generatedFile, m.androidCategoryLink})
+		end,
+
+		emitFilter = function(prj, group)
+			m.filterGroup(prj, group, "AntProjectPropertiesFile")
+		end
+	}
+
+	m.categories.JavaCompile = {
+		name = "JavaCompile",
+		priority = 99,
+
+		emitFiles = function(prj, group)
+			m.emitFiles(prj, group, "JavaCompile", {m.generatedFile, m.androidCategoryLink})
+		end,
+
+		emitFilter = function(prj, group)
+			m.filterGroup(prj, group, "JavaCompile")
+		end
+	}
+
+	m.categories.Content = {
+		name = "Content",
+		priority = 99,
+
+		emitFiles = function(prj, group)
+			m.emitFiles(prj, group, "Content", {m.generatedFile, m.androidCategoryLink})
+		end,
+
+		emitFilter = function(prj, group)
+			m.filterGroup(prj, group, "Content")
+		end
+	}
+
+---
 -- Categorize files into groups.
 ---
 	function m.categorizeSources(prj)
@@ -1346,45 +1627,70 @@
 
 
 	function m.categorizeFile(prj, file)
-		for cfg in project.eachconfig(prj) do
-			local fcfg = fileconfig.getconfig(file, cfg)
-			if fcfg then
-				-- If any configuration for this file uses a custom build step, that's the category to use
-				if fileconfig.hasCustomBuildRule(fcfg) then
-					return m.categories.CustomBuild
-				end
 
-				-- also check for buildaction
-				if fcfg.buildaction then
-					return m.categories[fcfg.buildaction] or m.categories.None
+		if prj.kind == p.PACKAGING then
+
+			local filename = path.getname(file.name):lower()
+			local extension = path.getextension(filename)
+
+			if filename == "androidmanifest.xml" then
+				return m.categories.AndroidManifest
+			elseif filename == "build.xml" then
+				return m.categories.AntBuildXml
+			elseif filename == "project.properties" then
+				return m.categories.AntProjectPropertiesFile
+			elseif extension == ".java" then
+				return m.categories.JavaCompile
+			else
+				return m.categories.Content
+			end
+
+		else
+			for cfg in project.eachconfig(prj) do
+				local fcfg = fileconfig.getconfig(file, cfg)
+				if fcfg then
+					-- If any configuration for this file uses a custom build step, that's the category to use
+					if fileconfig.hasCustomBuildRule(fcfg) then
+						return m.categories.CustomBuild
+					end
+
+					-- also check for buildaction
+					if fcfg.buildaction then
+						return m.categories[fcfg.buildaction] or m.categories.None
+					end
+
+					if fcfg.compileas ~= nil and fcfg.compileas ~= "Default" then
+						return m.categories.ClCompile
+					end
 				end
 			end
-		end
 
-		-- If there is a custom rule associated with it, use that
-		local rule = p.global.getRuleForFile(file.name, prj.rules)
-		if rule then
-			return {
-				name      = rule.name,
-				priority  = 100,
-				rule      = rule,
-				emitFiles = function(prj, group)
-					m.emitRuleFiles(prj, group)
-				end,
-				emitFilter = function(prj, group)
-					m.filterGroup(prj, group, group.category.name)
-				end
-			}
-		end
-
-		-- Otherwise use the file extension to deduce a category
-		for _, cat in pairs(m.categories) do
-			if cat.extensions and path.hasextension(file.name, cat.extensions) then
-				return cat
+			-- If there is a custom rule associated with it, use that
+			local rule = p.global.getRuleForFile(file.name, prj.rules)
+			if rule then
+				return {
+					name      = rule.name,
+					priority  = 100,
+					rule      = rule,
+					emitFiles = function(prj, group)
+						m.emitRuleFiles(prj, group)
+					end,
+					emitFilter = function(prj, group)
+						m.filterGroup(prj, group, group.category.name)
+					end
+				}
 			end
-		end
 
-		return m.categories.None
+			-- Otherwise use the file extension to deduce a category
+			for _, cat in pairs(m.categories) do
+				if cat.extensions and path.hasextension(file.name, cat.extensions) then
+					return cat
+				end
+			end
+
+			return m.categories.None
+
+		end
 	end
 
 
@@ -1485,7 +1791,7 @@
 
 				local contents = p.capture(function ()
 					p.push()
-					p.callArray(fileFunc, cfg, file)
+					p.callArray(fileFunc, nil, file)
 					m.conditionalElements = {}
 					for cfg in project.eachconfig(prj) do
 						local fcfg = fileconfig.getconfig(file, cfg)
@@ -1655,6 +1961,10 @@
 	function m.additionalDependencies(cfg, explicit)
 		local links
 
+		local toolgetrelative = p.tools.getrelative
+		p.tools.getrelative = function(...)
+			return path.translate(toolgetrelative(...))
+		end
 		-- check to see if this project uses an external toolset. If so, let the
 		-- toolset define the format of the links
 		local toolset = config.toolset(cfg)
@@ -1663,8 +1973,10 @@
 		else
 			links = vstudio.getLinks(cfg, explicit)
 		end
+		links = table.join(links, p.tools.msc.wholearchive(cfg))
+		p.tools.getrelative = toolgetrelative
 
-		links = path.translate(table.concat(links, ";"))
+		links = table.concat(links, ";")
 
 		local additional = ";%(AdditionalDependencies)"
 		if cfg.inheritdependencies ~= nil then
@@ -1676,6 +1988,17 @@
 		-- If there are no links and dependencies should be inherited, the tag doesn't have to be generated.
 		if #links > 0 or additional == "" then
 			m.element("AdditionalDependencies", nil, "%s%s", links, additional)
+		end
+	end
+
+
+	function m.useDynamicDebugging(cfg, explicit)
+		if cfg.dynamicdebugging and _ACTION >= "vs2022" then
+			if cfg.dynamicdebugging == p.ON then
+				m.element("UseDynamicDebugging", nil, "true")
+			elseif cfg.dynamicdebugging == p.OFF then
+				m.element("UseDynamicDebugging", nil, "false")
+			end
 		end
 	end
 
@@ -1730,27 +2053,31 @@
 	end
 
 
-	function m.languageStandard(cfg)
+	function m.languageStandard(cfg, condition)
 		if _ACTION >= "vs2017" then
 			if (cfg.cppdialect == "C++14") then
-				m.element("LanguageStandard", nil, 'stdcpp14')
+				m.element("LanguageStandard", condition, 'stdcpp14')
 			elseif (cfg.cppdialect == "C++17") then
-				m.element("LanguageStandard", nil, 'stdcpp17')
+				m.element("LanguageStandard", condition, 'stdcpp17')
 			elseif (cfg.cppdialect == "C++20") then
-				m.element("LanguageStandard", nil, iif(_ACTION == "vs2017", 'stdcpplatest', 'stdcpp20'))
+				m.element("LanguageStandard", condition, iif(_ACTION <= "vs2017", 'stdcpplatest', 'stdcpp20'))
+			elseif (cfg.cppdialect == "C++23") then
+				m.element("LanguageStandard", condition, iif(_ACTION <= "vs2019", 'stdcpplatest', 'stdcpp23'))
 			elseif (cfg.cppdialect == "C++latest") then
-				m.element("LanguageStandard", nil, 'stdcpplatest')
+				m.element("LanguageStandard", condition, 'stdcpplatest')
 			end
 		end
 	end
 
 
-	function m.languageStandardC(cfg)
+	function m.languageStandardC(cfg, condition)
 		if _ACTION >= "vs2019" then
 			if (cfg.cdialect == "C11") then
-				m.element("LanguageStandard_C", nil, 'stdc11')
+				m.element("LanguageStandard_C", condition, 'stdc11')
 			elseif (cfg.cdialect == "C17") then
-				m.element("LanguageStandard_C", nil, 'stdc17')
+				m.element("LanguageStandard_C", condition, 'stdc17')
+			elseif (cfg.cdialect == "C23") then
+				m.element("LanguageStandard_C", condition, 'stdclatest')
 			end
 		end
 	end
@@ -1823,8 +2150,8 @@
 			elseif (cfg.cppdialect == "C++17") then
 				table.insert(opts, "/std:c++17")
 			elseif (cfg.cppdialect == "C++20") then
-				table.insert(opts, "/std:c++latest")
-			elseif (cfg.cppdialect == "C++latest") then
+				table.insert(opts, iif(_ACTION <= "vs2017", "/std:c++latest", "/std:c++20"))
+			elseif (cfg.cppdialect == "C++latest" or cfg.cppdialect == "C++23") then
 				table.insert(opts, "/std:c++latest")
 			end
 		end
@@ -1832,6 +2159,7 @@
 		if cfg.toolset and cfg.toolset:startswith("msc") then
 			local value = iif(cfg.unsignedchar, "On", "Off")
 			table.insert(opts, p.tools.msc.shared.unsignedchar[value])
+			opts = table.join(opts, table.translate(cfg.enablewarnings, function(enable) return '/w1' .. enable end))
 		elseif _ACTION >= "vs2019" and cfg.toolset and cfg.toolset == "clang" then
 			local value = iif(cfg.unsignedchar, "On", "Off")
 			table.insert(opts, p.tools.msc.shared.unsignedchar[value])
@@ -1839,6 +2167,13 @@
 			if cfg.openmp == "On" then
 				table.insert(opts, 1, '/openmp')
 			end
+			-- <StructMemberAlignment>N</StructMemberAlignment> is unfortunately partially ignored with clang toolset
+			if cfg.structmemberalign then
+				table.insert(opts, 1, '/Zp' .. tostring(cfg.structmemberalign))
+			end
+			opts = table.join(opts, table.translate(cfg.disablewarnings, function(disable) return '-Wno-' .. disable end))
+			opts = table.join(opts, table.translate(p.filterFatalWarnings(cfg.fatalwarnings), function(disable) return '-Werror=' .. disable end))
+			opts = table.join(opts, table.translate(cfg.enablewarnings, function(enable) return '-W' .. enable end))
 		end
 
 		if #opts > 0 then
@@ -1849,9 +2184,29 @@
 
 
 	function m.additionalLinkOptions(cfg)
+
+		local opts = {}
+
+		-- Get manually added link options
 		if #cfg.linkoptions > 0 then
-			local opts = table.concat(cfg.linkoptions, " ")
-			m.element("AdditionalOptions", nil, "%s %%(AdditionalOptions)", opts)
+			opts = cfg.linkoptions
+		end
+
+		-- Fatal warnings are only available from VS2022 onwards
+		-- https://learn.microsoft.com/en-us/cpp/build/reference/wx-treat-linker-warnings-as-errors?view=msvc-170
+
+		if _ACTION >= "vs2022" then
+			local filteredFatalWarnings = p.filterFatalWarnings(cfg.linkerfatalwarnings)
+
+			if #filteredFatalWarnings > 0 then
+				-- Create a comma-separated set of warnings to elevate as errors
+				table.insert(opts, '/wx:'..table.implode(filteredFatalWarnings, "", "", ","))
+			end
+		end
+
+		if #opts > 0 then
+			local additionalOptions = table.concat(opts, " ")
+			m.element("AdditionalOptions", condition, '%s %%(AdditionalOptions)', additionalOptions)
 		end
 	end
 
@@ -1872,15 +2227,23 @@
 
 	function m.basicRuntimeChecks(cfg, condition)
 		local prjcfg, filecfg = p.config.normalize(cfg)
-		local runtime = config.getruntime(prjcfg) or iif(config.isDebugBuild(cfg), "Debug", "Release")
-		if filecfg then
-			if filecfg.flags.NoRuntimeChecks or (config.isOptimizedBuild(filecfg) and runtime:endswith("Debug")) then
-				m.element("BasicRuntimeChecks", condition, "Default")
-			end
-		else
-			if prjcfg.flags.NoRuntimeChecks or (config.isOptimizedBuild(prjcfg) and runtime:endswith("Debug")) then
-				m.element("BasicRuntimeChecks", nil, "Default")
-			end
+
+		local function getruntimecheck(c)
+			local checks = {
+				Off = "Default", -- Per MSVC SDK docs, "Default" means no runtime checks
+				StackFrames = "StackFrameRuntimeCheck",
+				UninitializedVariables = "UninitializedLocalUsageCheck",
+				FastChecks = "EnableFastChecks",
+			}
+
+			local runtimecheck = c.runtimechecks
+			return checks[runtimecheck]
+			
+		end
+
+		local check = getruntimecheck(filecfg or prjcfg)
+		if check then
+			m.element("BasicRuntimeChecks", condition, check)
 		end
 	end
 
@@ -1952,8 +2315,10 @@
 
 
 	function m.wholeProgramOptimization(cfg)
-		if cfg.flags.LinkTimeOptimization then
+		if cfg.linktimeoptimization == "On" or cfg.linktimeoptimization == "Fast" then
 			m.element("WholeProgramOptimization", nil, "true")
+		elseif cfg.linktimeoptimization == "Off" then
+			m.element("WholeProgramOptimization", nil, "false")
 		end
 	end
 
@@ -2125,7 +2490,7 @@
 
 
 	function m.excludedFromBuild(filecfg, condition)
-		if not filecfg or filecfg.flags.ExcludeFromBuild then
+		if not filecfg or filecfg.excludefrombuild then
 			m.element("ExcludedFromBuild", condition, "true")
 		end
 	end
@@ -2193,7 +2558,7 @@
 			if #includes > 0 then
 				m.element("ForcedIncludeFiles", condition, table.concat(includes, ';'))
 			end
-		end		
+		end
 	end
 
 	function m.forceUsings(cfg, condition)
@@ -2213,7 +2578,14 @@
 
 	function m.assemblyDebug(cfg)
 		if cfg.assemblydebug then
-      		m.element("AssemblyDebug", nil, "true")
+			m.element("AssemblyDebug", nil, "true")
+		end
+	end
+
+
+	function m.profile(cfg)
+		if cfg.profile ~= nil then
+			m.element("Profile", nil, iif(cfg.profile, "true", "false"))
 		end
 	end
 
@@ -2258,15 +2630,20 @@
 
 
 	function m.generateManifest(cfg)
-		if cfg.flags.NoManifest then
+		if cfg.manifest == p.OFF then
 			m.element("GenerateManifest", nil, "false")
 		end
 	end
 
 
 	function m.generateMapFile(cfg)
-		if cfg.flags.Maps then
+		if cfg.mapfile == p.ON then
 			m.element("GenerateMapFile", nil, "true")
+			if cfg.mapfilepath then
+				m.element("MapFileName", nil, vstudio.path(cfg, cfg.mapfilepath))
+			end
+		elseif cfg.mapfile == p.OFF then
+			m.element("GenerateMapFile", nil, "false")
 		end
 	end
 
@@ -2300,7 +2677,7 @@
 
 	function m.ignoreImportLibrary(cfg)
 		if cfg.kind == p.SHAREDLIB then
-			if cfg.flags.NoImportLib then
+			if cfg.useimportlib == p.OFF then
 				m.element("IgnoreImportLibrary", nil, "true")
 			elseif cfg.system == p.UWP then
 				m.element("IgnoreImportLibrary", nil, "false")
@@ -2488,6 +2865,11 @@
 
 	function m.intDir(cfg)
 		local objdir = vstudio.path(cfg, cfg.objdir)
+
+		if not path.isabsolute(objdir) then
+			objdir = "$(ProjectDir)" .. objdir
+		end
+
 		m.element("IntDir", nil, "%s\\", objdir)
 	end
 
@@ -2577,11 +2959,11 @@
 		-- Left to its own devices, VS will happily link against a project dependency
 		-- that has been excluded from the build. As a workaround, disable dependency
 		-- linking and list all siblings explicitly
-		if explicit then
-			p.push('<ProjectReference>')
-			m.element("LinkLibraryDependencies", nil, "false")
-			p.pop('</ProjectReference>')
+		p.push('<ProjectReference>')
+		if explicit or cfg.implicitlink ~= nil then
+			m.element("LinkLibraryDependencies", nil, iif(explicit, "false", "true"))
 		end
+		p.pop('</ProjectReference>')
 	end
 
 
@@ -2594,11 +2976,13 @@
 
 	function m.minimalRebuild(cfg)
 		if config.isOptimizedBuild(cfg) or
-		   cfg.flags.NoMinimalRebuild or
-		   cfg.flags.MultiProcessorCompile or
-		   cfg.debugformat == p.C7
+		   cfg.minimalrebuild == "Off" or
+		   cfg.multiprocessorcompile == p.ON or
+		   cfg.debugformat == "c7"
 		then
 			m.element("MinimalRebuild", nil, "false")
+		elseif cfg.minimalrebuild == "On" then
+			m.element("MinimalRebuild", nil, "true")
 		end
 	end
 
@@ -2612,7 +2996,7 @@
 
 
 	function m.multiProcessorCompilation(cfg)
-		if cfg.flags.MultiProcessorCompile then
+		if cfg.multiprocessorcompile == p.ON then
 			m.element("MultiProcessorCompilation", nil, "true")
 		end
 	end
@@ -2659,8 +3043,7 @@
 		if cfg.system == p.WINDOWS then
 			if cfg.architecture == p.ARM then
 				p.w('<WindowsSDKDesktopARMSupport>true</WindowsSDKDesktopARMSupport>')
-			end
-			if cfg.architecture == p.ARM64 then
+			elseif cfg.architecture == p.AARCH64 then
 				p.w('<WindowsSDKDesktopARM64Support>true</WindowsSDKDesktopARM64Support>')
 			end
 		end
@@ -2694,7 +3077,7 @@
 
 
 	function m.omitDefaultLib(cfg)
-		if cfg.flags.OmitDefaultLibrary then
+		if cfg.nodefaultlib == p.ON then
 			m.element("OmitDefaultLibName", nil, "true")
 		end
 	end
@@ -2712,11 +3095,22 @@
 
 	function m.optimizeReferences(cfg)
 		if config.isOptimizedBuild(cfg) then
-			m.element("EnableCOMDATFolding", nil, "true")
+			if cfg.dynamicdebugging == p.ON then
+				m.element("EnableCOMDATFolding", nil, "false")
+			else
+				m.element("EnableCOMDATFolding", nil, "true")
+			end
 			m.element("OptimizeReferences", nil, "true")
 		end
 	end
 
+	function m.linkTimeCodeGeneration(cfg)
+		if cfg.linktimeoptimization == "On" then
+			m.element("LinkTimeCodeGeneration", nil, "UseLinkTimeCodeGeneration")
+		elseif cfg.linktimeoptimization == "Fast" then
+			m.element("LinkTimeCodeGeneration", nil, "UseFastLinkTimeCodeGeneration")
+		end
+	end
 
 	function m.optimization(cfg, condition)
 		local map = { Off="Disabled", On="Full", Debug="Disabled", Full="Full", Size="MinSpace", Speed="MaxSpeed" }
@@ -2729,7 +3123,13 @@
 
 	function m.outDir(cfg)
 		local outdir = vstudio.path(cfg, cfg.buildtarget.directory)
+
+		if not path.isabsolute(outdir) then
+			outdir = "$(ProjectDir)" .. outdir
+		end
+
 		m.element("OutDir", nil, "%s\\", outdir)
+
 	end
 
 
@@ -2778,6 +3178,19 @@
 		end
 	end
 
+	function m.llvmTools(cfg)
+		local llvmdir = cfg.llvmdir
+		local llvmversion = cfg.llvmversion
+
+		if llvmdir and _ACTION >= "vs2019" then
+			m.element("LLVMInstallDir", nil, vstudio.path(cfg, llvmdir))
+		end
+
+		if llvmversion and _ACTION >= "vs2019" then
+			m.element("LLVMToolsVersion", nil, llvmversion)
+		end
+	end
+
 	function m.enableUnityBuild(cfg)
 		if _ACTION >= "vs2017" and cfg.enableunitybuild then
 			m.element("EnableUnitySupport", nil, iif(cfg.enableunitybuild == "On", "true", "false"))
@@ -2804,15 +3217,20 @@
 	function m.precompiledHeader(cfg, condition)
 		local prjcfg, filecfg = p.config.normalize(cfg)
 		if filecfg then
-			if prjcfg.pchsource == filecfg.abspath and not prjcfg.flags.NoPCH then
+			if prjcfg.pchsource == filecfg.abspath and prjcfg.enablepch ~= "Off" then
 				m.element('PrecompiledHeader', condition, 'Create')
-			elseif filecfg.flags.NoPCH then
+			elseif filecfg.enablepch == p.OFF then
 				m.element('PrecompiledHeader', condition, 'NotUsing')
 			end
 		else
-			if not prjcfg.flags.NoPCH and prjcfg.pchheader then
+			if prjcfg.enablepch ~= "Off" and prjcfg.pchheader then
 				m.element("PrecompiledHeader", nil, "Use")
-				m.precompiledHeaderFile(prjcfg.pchheader, prjcfg)
+
+				if cfg.system == p.ANDROID then
+					m.androidPrecompiledHeaderFile(prjcfg.pchheader, prjcfg)
+				else
+					m.precompiledHeaderFile(prjcfg.pchheader, prjcfg)
+				end
 			else
 				m.element("PrecompiledHeader", nil, "NotUsing")
 			end
@@ -2983,8 +3401,10 @@
 
 	function m.bufferSecurityCheck(cfg)
 		local tool, toolVersion = p.config.toolset(cfg)
-		if cfg.flags.NoBufferSecurityCheck or (toolVersion and toolVersion:startswith("LLVM-vs")) then
+		if cfg.buffersecuritycheck == p.OFF or (toolVersion and toolVersion:startswith("LLVM-vs")) then
 			m.element("BufferSecurityCheck", nil, "false")
+		elseif cfg.buffersecuritycheck == p.ON then
+			m.element("BufferSecurityCheck", nil, "true")
 		end
 	end
 
@@ -3107,10 +3527,19 @@
 
 
 	function m.additionalProps(prj, cfg)
-		for i = 1, #cfg.vsprops do
-			for key, value in spairs(cfg.vsprops[i]) do
-				m.element(key, nil, vs2010.esc(value))
+		local function recurseTableIfNeeded(tbl)
+			for key, value in spairs(tbl) do
+				if (type(value) == "table") then
+					p.push("<" .. key .. ">")
+						recurseTableIfNeeded(value)
+					p.pop("</" .. key .. ">")
+				else
+					m.element(key, nil, vs2010.esc(value))
+				end
 			end
+		end
+		for i = 1, #cfg.vsprops do
+			recurseTableIfNeeded(cfg.vsprops[i])
 		end
 	end
 
@@ -3138,7 +3567,7 @@
 
 
 	function m.treatLinkerWarningAsErrors(cfg)
-		if cfg.flags.FatalLinkWarnings then
+		if p.hasFatalLinkWarnings(cfg.linkerfatalwarnings) then
 			local el = iif(cfg.kind == p.STATICLIB, "Lib", "Linker")
 			m.element("Treat" .. el .. "WarningAsErrors", nil, "true")
 		end
@@ -3155,14 +3584,14 @@
 
 
 	function m.treatWarningAsError(cfg)
-		if cfg.flags.FatalCompileWarnings and cfg.warnings ~= p.OFF then
+		if p.hasFatalCompileWarnings(cfg.fatalwarnings) and cfg.warnings ~= p.OFF then
 			m.element("TreatWarningAsError", nil, "true")
 		end
 	end
 
 
 	function m.disableSpecificWarnings(cfg, condition)
-		if #cfg.disablewarnings > 0 then
+		if #cfg.disablewarnings > 0 and cfg.toolset ~= "clang" then
 			local warnings = table.concat(cfg.disablewarnings, ";")
 			warnings = warnings .. ";%%(DisableSpecificWarnings)"
 			m.element('DisableSpecificWarnings', condition, warnings)
@@ -3171,8 +3600,10 @@
 
 
 	function m.treatSpecificWarningsAsErrors(cfg, condition)
-		if #cfg.fatalwarnings > 0 then
-			local fatal = table.concat(cfg.fatalwarnings, ";")
+		local filteredWarnings = p.filterFatalWarnings(cfg.fatalwarnings)
+
+		if #filteredWarnings > 0 and cfg.toolset ~= "clang" then
+			local fatal = table.concat(filteredWarnings, ";")
 			fatal = fatal .. ";%%(TreatSpecificWarningsAsErrors)"
 			m.element('TreatSpecificWarningsAsErrors', condition, fatal)
 		end
@@ -3186,8 +3617,14 @@
 
 
 	function m.useOfMfc(cfg)
-		if cfg.flags.MFC then
+		if (cfg.mfc == "On") then
 			m.element("UseOfMfc", nil, iif(cfg.staticruntime == "On", "Static", "Dynamic"))
+		elseif (cfg.mfc == "Off") then
+			m.element("UseOfMfc", nil, "false")
+		elseif (cfg.mfc == "Static") then
+			m.element("UseOfMfc", nil, "Static")
+		elseif (cfg.mfc == "Dynamic") then
+			m.element("UseOfMfc", nil, "Dynamic")
 		end
 	end
 
@@ -3452,15 +3889,15 @@
 	function m.linuxApplicationType(cfg)
 		m.element("Keyword", nil, "Linux")
 		m.element("RootNamespace", nil, "%s", cfg.project.name)
-		m.element("MinimumVisualStudioVersion", nil, "17.0")
+		m.element("MinimumVisualStudioVersion", nil, "15.0")
 		m.element("ApplicationType", nil, "Linux")
 		m.element("TargetLinuxPlatform", nil, "Generic")
 		m.element("ApplicationTypeRevision", nil, "1.0")
 	end
 
 	function m.linuxDebugInformationFormat(cfg)
-		if cfg.symbols then
-	
+		if cfg.symbols ~= "Default" then
+
 			if cfg.symbols == p.OFF then
 				m.element("DebugInformationFormat", nil, "None")
 			elseif cfg.symbols == "Full" then
@@ -3486,6 +3923,29 @@
 
 	end
 
+	function m.linuxExternalIncludeDirs(cfg)
+
+		local externaldirs = table.join(cfg.externalincludedirs, cfg.includedirsafter)
+		local dirs = vstudio.path(cfg, externaldirs)
+		if #dirs > 0 then
+
+			-- Take note of the directories that exist locally, to be able to copy
+			local existingdirs = {}
+
+			for _, dir in ipairs(dirs or {}) do
+				local absolutedir = path.getabsolute(dir)
+
+				-- If directory exists on local machine, it's good to copy across to remote machine
+				if os.isdir(absolutedir) then
+					table.insert(existingdirs, dir)
+				end
+			end
+
+			m.element("AdditionalSourcesToCopyMapping", nil, "%s;$(AdditionalSourcesToCopyMapping)", table.concat(existingdirs, ";"))
+		end
+
+	end
+
 	function m.linuxLanguageStandardCpp(cfg)
 		local cpp_langmap = {
 			["C++98"]   = "c++98",
@@ -3495,15 +3955,19 @@
 			["C++17"]   = "c++17",
 			["C++2a"]   = "c++2a",
 			["C++20"]   = "c++20",
-			["C++latest"] = "c++20",
+			["C++2b"]   = "c++2b",
+			["C++23"]   = "c++23",
+			["C++latest"] = "c++23",
 			["gnu++98"] = "gnu++98",
 			["gnu++03"] = "gnu++03",
 			["gnu++11"] = "gnu++11",
 			["gnu++14"] = "gnu++14",
 			["gnu++17"] = "gnu++17",
 			["gnu++20"] = "gnu++20",
+			["gnu++2b"] = "gnu++2b",
+			["gnu++23"] = "gnu++23",
 		}
-		
+
 		if cpp_langmap[cfg.cppdialect] ~= nil then
 			m.element("CppLanguageStandard", nil, cpp_langmap[cfg.cppdialect])
 		end
@@ -3554,36 +4018,50 @@
 	end
 
 	function m.linuxPlatformToolset(cfg)
-		local tool, version = p.config.toolset(cfg)
-
-		if not version then
-			local value = p.action.current().toolset
-			tool, version = p.tools.canonical(value)
-		end
+		local toolset = p.tools.normalize(cfg.toolset):explode("-", true, 1)
+		local tool = toolset[1]
+		local version = toolset[2]
 
 		local gcc_map = {
 			["remote"] = "Remote_GCC_1_0",
 			["wsl"] = "WSL_1_0",
 			["wsl2"] = "WSL2_1_0",
 		}
-		
+
 		local clang_map = {
 			["remote"] = "Remote_Clang_1_0",
 			["wsl"] = "WSL_Clang_1_0",
 			["wsl2"] = "WSL2_Clang_1_0",
 		}
 
-		if cfg.toolchainversion then
-
-			local map = iif(cfg.toolset == "gcc", gcc_map, clang_map)
-			version  = map[cfg.toolchainversion]
-
-		end
+		local toolset_map = {
+			gcc = gcc_map,
+			clang = clang_map,
+		}
 
 		if version then
-			m.element("PlatformToolset", nil, version)
+			local map = toolset_map[tool]
+			if not map then
+				p.error('Invalid toolset (%s) for Linux platform.', tool)
+			end
+
+			local ts = map[version]
+			if not ts then
+				p.error('Invalid version (%s) for the selected toolset (%s).', version, cfg.toolset)
+			end
+
+			m.element("PlatformToolset", nil, ts)
+		elseif cfg.toolchainversion then
+			local map = iif(cfg.toolset == "gcc", gcc_map, clang_map)
+			local ts  = map[cfg.toolchainversion]
+
+			if ts then
+				m.element("PlatformToolset", nil, ts)
+			else
+				p.error('Invalid toolchainversion (%s) for the selected toolset (%s).', cfg.toolchainversion, cfg.toolset)
+			end
 		else
-			p.error('Invalid toolchainversion (%s) for the selected toolset (%s).', cfg.toolchainversion, cfg.toolset)
+			p.error('Specify a toolchain version for the selected toolset (%s). (%s - %s)', cfg.toolset, tool, version)
 		end
 	end
 
@@ -3606,10 +4084,316 @@
 	end
 
 	function m.linuxWholeProgramOptimization(cfg)
-		if cfg.flags.LinkTimeOptimization then
+		if cfg.linktimeoptimization == "On" or cfg.linktimeoptimization == "Fast" then
+			m.element("LinkTimeOptimization", nil, "true")
+		elseif cfg.linktimeoptimization == "Off" then
+			m.element("LinkTimeOptimization", nil, "false")
+		end
+	end
+
+	function m.linuxMultiProcNumber(cfg)
+		-- Linux equivalent of 'MultiProcessorCompilation'
+		-- Default to 8 parallel jobs
+		if cfg.multiprocessorcompile == p.ON then
+			m.element("MultiProcNumber", nil, "8")
+		end
+	end
+
+	function m.linuxLinkTimeCodeGeneration(cfg)
+		if cfg.linktimeoptimization == "On" or cfg.linktimeoptimization == "Fast" then
 			m.element("LinkTimeOptimization", nil, "true")
 		end
 	end
+
+--
+-- Android project generation functions
+--
+
+	function m.androidApplicationType(cfg)
+		m.element("Keyword", nil, "Android")
+		m.element("RootNamespace", nil, "%s", cfg.project.name)
+		if _ACTION >= "vs2019" then
+			m.element("MinimumVisualStudioVersion", nil, "16.0")
+		elseif _ACTION >= "vs2017" then
+			m.element("MinimumVisualStudioVersion", nil, "15.0")
+		elseif _ACTION >= "vs2015" then
+			m.element("MinimumVisualStudioVersion", nil, "14.0")
+		end
+		m.element("ApplicationType", nil, "Android")
+		if _ACTION >= "vs2017" then
+			m.element("ApplicationTypeRevision", nil, "3.0")
+		elseif _ACTION >= "vs2015" then
+			m.element("ApplicationTypeRevision", nil, "2.0")
+		else
+			m.element("ApplicationTypeRevision", nil, "1.0")
+		end
+	end
+
+	function m.androidDebugInformationFormat(cfg)
+		if cfg.symbols ~= "Default" then
+
+			if cfg.symbols == p.OFF then
+				m.element("DebugInformationFormat", nil, "None")
+			elseif cfg.symbols == "Full" then
+				m.element("DebugInformationFormat", nil, "FullDebug")
+			else
+				m.element("DebugInformationFormat", nil, "LineNumber")
+			end
+
+		end
+	end
+
+	function m.androidExceptionHandling(cfg, condition)
+		-- Note: Android defaults to 'off'
+		local exceptions = {
+			On = "Enabled",
+			Off = "Disabled",
+			UnwindTables = "UnwindTables",
+		}
+		if exceptions[cfg.exceptionhandling] ~= nil then
+			m.element("ExceptionHandling", condition, exceptions[cfg.exceptionhandling])
+		end
+	end
+
+	function m.androidRuntimeTypeInfo(cfg, condition)
+		if cfg.rtti ~= nil and cfg.rtti ~= "Default" then
+			m.element("RuntimeTypeInfo", condition, iif(cfg.rtti == p.ON, "true", "false"))
+		end
+	end
+
+	function m.androidWarningLevel(cfg, condition)
+
+		if cfg.warnings and cfg.warnings ~= "Off" then
+			m.element("WarningLevel", nil, "EnableAllWarnings")
+		else
+			m.warningLevel(cfg, condition)
+		end
+
+	end
+
+	function m.androidClCompilePreprocessorDefinitions(cfg, condition)
+		m.preprocessorDefinitions(cfg, cfg.defines, false, condition)
+	end
+
+	function m.androidLanguageStandardCpp(cfg)
+		local cpp_langmap = {
+			["C++98"]   = "c++98",
+			["C++11"]   = "c++11",
+			["C++14"]   = "c++1y",
+			["C++17"]   = "c++1z",
+			["C++latest"] = "c++1z",
+			["gnu++98"] = "gnu++98",
+			["gnu++11"] = "gnu++11",
+			["gnu++14"] = "gnu++1y",
+			["gnu++17"] = "gnu++1z",
+		}
+		if cpp_langmap[cfg.cppdialect] ~= nil then
+			m.element("CppLanguageStandard", nil, cpp_langmap[cfg.cppdialect])
+		end
+	end
+
+	function m.androidLanguageStandardC(cfg)
+		local c_langmap = {
+			["C98"]   = "c98",
+			["C99"]   = "c99",
+			["C11"]   = "c11",
+			["gnu99"] = "gnu99",
+			["gnu11"] = "gnu11",
+		}
+		if c_langmap[cfg.cdialect] ~= nil then
+			m.element("CLanguageStandard", nil, c_langmap[cfg.cdialect])
+		end
+	end
+
+	function m.androidFloatAbi(cfg)
+		local floatabi = {
+			Soft = "soft",
+			SoftFP = "softfp",
+			Hard = "hard",
+		}
+
+		if cfg.floatabi ~= nil and floatabi[cfg.floatabi] ~= nil then
+			m.element("FloatABI", nil, floatabi[cfg.floatabi])
+		end
+	end
+
+	function m.androidOptimization(cfg, condition)
+		-- For some reason Android has a slight name change to these (x64 is MinSpace)
+		local map = { Off="Disabled", On="Full", Debug="Disabled", Full="Full", Size="MinSize", Speed="MaxSpeed" }
+		local value = map[cfg.optimize]
+		if value or not condition then
+			m.element('Optimization', condition, value or "Disabled")
+		end
+	end
+
+	function m.androidEnableEnhancedInstructionSet(cfg)
+		if cfg.vectorextensions == "NEON" then
+			m.element("EnableNeonCodegen", nil, "true")
+		end
+	end
+
+	function m.androidPrecompiledHeaderFile(fileName, cfg)
+		-- Doesn't work for project-relative paths.
+		m.element("PrecompiledHeaderFile", nil, "%s", path.getabsolute(path.rebase(fileName, cfg.basedir, cfg.location)))
+	end
+
+	function m.androidPIC(cfg)
+		if cfg.pic ~= nil then
+			m.element("PositionIndependentCode", nil, iif(cfg.pic == "On", "true", "false"))
+		end
+	end
+
+	function m.androidPlatformToolset(cfg)
+		local gcc_map = {
+			["4.6"] = "GCC_4_6",
+			["4.8"] = "GCC_4_8",
+			["4.9"] = "GCC_4_9",
+		}
+		local clang_map = {
+			["3.4"] = "Clang_3_4",
+			["3.5"] = "Clang_3_5",
+			["3.6"] = "Clang_3_6",
+			["3.8"] = "Clang_3_8",
+			["5.0"] = "Clang_5_0",
+		}
+
+		local toolset_map = {
+			gcc = gcc_map,
+			clang = clang_map,
+		}
+
+		local toolset = p.tools.normalize(cfg.toolset):explode("-", true, 1)
+		local tool = toolset[1]
+		local version = toolset[2]
+
+		if version then
+			local tool_mapping = toolset_map[tool]
+			if tool_mapping then
+				local ts = tool_mapping[version]
+				if ts == nil then
+					p.error('Invalid version (%s) for the selected toolset (%s).', version, tool)
+				end
+
+				m.element("PlatformToolset", nil, ts)
+			end
+		elseif cfg.toolchainversion ~= nil then
+			local map = iif(cfg.toolset == "gcc", gcc_map, clang_map)
+			local ts  = map[cfg.toolchainversion]
+			if ts == nil then
+				p.error('Invalid toolchainversion for the selected toolset (%s).', cfg.toolset or "clang")
+			end
+
+			m.element("PlatformToolset", nil, ts)
+		end
+	end
+
+	function m.androidStlType(cfg)
+		if cfg.stl ~= nil then
+			local stlType = {
+				["none"] = "system",
+				["gabi++"] = "gabi++",
+				["stlport"] = "stlport",
+				["gnu"] = "gnustl",
+				["libc++"] = "c++",
+			}
+
+			local postfix = iif(cfg.staticruntime == "On", "_static", "_shared")
+			local runtimeLib = iif(cfg.stl == "none", "system", stlType[cfg.stl] .. postfix)
+
+			m.element("UseOfStl", nil, runtimeLib)
+		end
+	end
+
+	function m.androidStrictAliasing(cfg)
+		if cfg.strictaliasing ~= nil then
+			m.element("StrictAliasing", nil, iif(cfg.strictaliasing == "Off", "false", "true"))
+		end
+	end
+
+	function m.androidAPILevel(cfg)
+		if cfg.androidapilevel ~= nil then
+			m.element("AndroidAPILevel", nil, "android-" .. cfg.androidapilevel)
+		end
+	end
+
+	function m.androidShortEnums(cfg)
+		if cfg.useshortenums then
+			m.element("UseShortEnums", nil, iif(cfg.useshortenums == "On", "true", "false"))
+		end
+	end
+
+	function m.androidLinkSections(cfg)
+
+		if cfg.linksectiondata == 'On' then
+			m.element("DataLevelLinking", nil, "true")
+		elseif cfg.linksectiondata == 'Off' then
+			m.element("DataLevelLinking", nil, "false")
+		end
+
+		if cfg.linksectionfunction == 'On' then
+			m.element("FunctionLevelLinking", nil, "true")
+		elseif cfg.linksectionfunction == 'Off' then
+			m.element("FunctionLevelLinking", nil, "false")
+		end
+
+	end
+
+	function m.thumbMode(cfg)
+		if cfg.thumbmode ~= nil then
+			local thumbMode =
+			{
+				thumb = "Thumb",
+				arm = "ARM",
+				disabled = "Disabled",
+			}
+			m.element("ThumbMode", nil, thumbMode[cfg.thumbmode])
+		end
+	end
+
+	function m.androidGenerateMapFile(cfg)
+		if cfg.mapfile == p.ON then
+			-- Android specifies a name. Other platforms use the project name
+			-- so we do the same thing here
+			m.element("GenerateMapFile", nil, cfg.project.name..".map")
+		end
+	end
+
+	function m.androidUseMultiToolTask(cfg)
+		-- Android equivalent of 'MultiProcessorCompilation'
+		if cfg.multiprocessorcompile == p.ON then
+			m.element("UseMultiToolTask", nil, "true")
+		end
+	end
+
+	-- Remove .lib and list in LibraryDependencies instead of AdditionalDependencies
+	function m.androidAdditionalDependencies(cfg, explicit)
+
+		local links = {}
+
+		-- If we need sibling projects to be listed explicitly, grab them first
+		if explicit then
+			links = config.getlinks(cfg, "siblings", "fullpath")
+		end
+
+		-- Then the system libraries, which come undecorated
+		local system = config.getlinks(cfg, "system", "name")
+		for i = 1, #system do
+			local link = system[i]
+			table.insert(links, link)
+		end
+
+		-- TODO: When to use LibraryDependencies vs AdditionalDependencies
+
+		if #links > 0 then
+			links = path.translate(table.concat(links, ";"))
+			m.element("LibraryDependencies", nil, "%%(LibraryDependencies);%s", links)
+		end
+
+	end
+
+	--
+	-- Shared project generation functions
+	--
 
 	function m.gccClangAdditionalCompileOptions(cfg)
 		local opts = cfg.buildoptions
@@ -3622,7 +4406,18 @@
 
 		-- -fvisibility=<>
 		if cfg.visibility ~= nil then
-			table.insert(opts, p.tools.gcc.cxxflags.visibility[cfg.visibility])
+			table.insert(opts, p.tools.gcc.shared.visibility[cfg.visibility])
+		end
+
+		-- -isystem="path1"
+		-- Systems like Android put external includes in the ExternalIncludePath
+		if cfg.system == p.LINUX then
+			local externaldirs = table.join(cfg.externalincludedirs, cfg.includedirsafter)
+			local dirs = vstudio.path(cfg, externaldirs)
+			for _, dir in ipairs(dirs or {}) do
+				relativedir = p.tools.getrelative(cfg.project, dir)
+				table.insert(opts, '-isystem ' .. p.quoted(relativedir))
+			end
 		end
 
 		if #opts > 0 then

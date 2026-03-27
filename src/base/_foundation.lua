@@ -1,6 +1,6 @@
 ---
 -- Base definitions required by all the other scripts.
--- @copyright 2002-2015 Jason Perkins and the Premake project
+-- @copyright 2002-2015 Jess Perkins and the Premake project
 ---
 
 	premake = premake or {}
@@ -27,7 +27,6 @@
 --
 
 	premake.C           = "C"
-	premake.C7          = "c7"
 	premake.CLANG       = "clang"
 	premake.CONSOLEAPP  = "ConsoleApp"
 	premake.CPP         = "C++"
@@ -35,11 +34,14 @@
 	premake.GCC         = "gcc"
 	premake.HAIKU       = "haiku"
 	premake.ANDROID     = "android"
+	premake.EMSCRIPTEN  = "emscripten"
 	premake.IOS         = "ios"
+	premake.TVOS        = "tvos"
 	premake.LINUX       = "linux"
 	premake.MACOSX      = "macosx"
 	premake.MAKEFILE    = "Makefile"
 	premake.MBCS        = "MBCS"
+	premake.MSC         = "msc"
 	premake.NONE        = "None"
 	premake.DEFAULT     = "Default"
 	premake.OBJECTIVEC   = "Objective-C"
@@ -61,8 +63,15 @@
 	premake.X86         = "x86"
 	premake.X86_64      = "x86_64"
 	premake.ARM         = "ARM"
-	premake.ARM64       = "ARM64"
-
+	premake.AARCH64     = "AARCH64"
+	premake.RISCV64     = "RISCV64"
+	premake.LOONGARCH64 = "loongarch64"
+	premake.PPC         = "ppc"
+	premake.PPC64       = "ppc64"
+	premake.WASM32 = "wasm32"
+	premake.WASM64 = "wasm64"
+	premake.E2K = "e2k"
+	premake.MIPS64EL = "mips64el"
 
 
 ---
@@ -117,22 +126,6 @@
 			end
 		end
 	end
-
-
-	-- TODO: THIS IMPLEMENTATION IS GOING AWAY
-
-	function premake.callarray(namespace, array, ...)
-		local n = #array
-		for i = 1, n do
-			local fn = namespace[array[i]]
-			if not fn then
-				error(string.format("Unable to find function '%s'", array[i]))
-			end
-			fn(...)
-		end
-
-	end
-
 
 
 ---
@@ -212,22 +205,6 @@
 	end
 
 
-
---
--- Raise an error, with a formatted message built from the provided
--- arguments.
---
--- @param message
---    The error message, which may contain string formatting tokens.
--- @param ...
---    Values to fill in the string formatting tokens.
---
-
-	function premake.error(message, ...)
-		error(string.format("** Error: " .. message, ...), 0)
-	end
-
-
 --
 -- Finds the correct premake script filename to be run.
 --
@@ -238,15 +215,29 @@
 --
 
 	function premake.findProjectScript(fname)
-		local with_ext = fname .. ".lua"
-		local p5 = path.join(fname, "premake5.lua")
-		local p4 = path.join(fname, "premake4.lua")
+		local filenames = {
+			fname,
+			fname .. ".lua",
+			path.join(fname, "premake5.lua"),
+			path.join(fname, "premake4.lua"),
+		}
 
-		local res = os.locate(fname, with_ext, p5, p4)
-		res = res or fname
-		local compiled_chunk = loadfile(res)
-		if compiled_chunk == nil then
-			premake.error("Cannot find either " .. table.implode({fname, with_ext, p5, p4}, "", "", " or "))
+		-- If the currently running script was embedded, try to find this file as if it were embedded too.
+		if _SCRIPT_DIR and _SCRIPT_DIR:startswith('$') then
+			table.insert(filenames, path.getabsolute(fname, _SCRIPT_DIR))
+		end
+
+		local compiled_chunk
+		local res = os.locate(table.unpack(filenames))
+		if res == nil then
+			local caller = filelineinfo(3)
+			premake.error(caller .. ": Cannot find neither " .. table.implode(filenames, "", "", " nor "))
+		else
+			compiled_chunk, err = loadfile(res)
+			if err ~= nil then
+				local caller = filelineinfo(3)
+				premake.error(caller .. ": Error loading '" .. fname .. ": " .. err)
+			end
 		end
 		return res, compiled_chunk
 	end
@@ -342,6 +333,20 @@
 		return scope, name
 	end
 
+
+--
+-- Raise an error, with a formatted message built from the provided
+-- arguments.
+--
+-- @param message
+--    The error message, which may contain string formatting tokens.
+-- @param ...
+--    Values to fill in the string formatting tokens.
+--
+
+function premake.error(message, ...)
+	error(string.format("** Error: " .. message, ...), 0)
+end
 
 
 --

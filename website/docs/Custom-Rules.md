@@ -2,7 +2,7 @@
 title: Custom Rules
 ---
 
-Rule file generation is a new and experimental feature of Premake 5.0, which currently only supports Visual Studio and the gmake2 action. It allows you describe how to build a particular kind of file, similar to [custom build commands](Custom-Build-Commands.md), but in a more generic way, and with variables that can be set in your project script.
+Rule file generation is a new and experimental feature of Premake 5.0, which currently only supports Visual Studio and the gmake action. It allows you describe how to build a particular kind of file, similar to [custom build commands](Custom-Build-Commands.md), but in a more generic way, and with variables that can be set in your project script.
 
 At generation time, Premake will output the appropriate rule files for the target action, just as it does for workspaces and projects.  For Visual Studio 2010+, Premake will generate `RuleName.props`, `RuleName.targets`, and `RuleName.xml`. Currently, no other actions are supported.
 
@@ -72,3 +72,14 @@ project "MyProject"
       StripDebugInfo = true
     }
 ```
+
+## Rule Batching
+
+With MSBuild, custom rules can be batched if same properties are used. To enable this, use `file.ruleinputs` tokens in `buildcommands`. If corresponding `buildoutputs` is up-to-date to the input, then the input will be omitted. This token falls back to `file.relpath` on unsupported environment.
+
+```lua
+rule "BatchRule"
+  fileextension ".xyz"
+  buildcommands "MyProcessor.exe %{file.ruleinputs}"
+```
+

@@ -54,6 +54,7 @@ file.reldirectory
 file.name
 file.basename -- (file part without extension)
 file.extension -- (including '.'; eg ".cpp")
+file.ruleinputs -- (see custom rules)
 
 -- These values are available on build and link targets
 -- Replace [target] with one of "cfg.buildtarget" or "cfg.linktarget"
@@ -87,8 +88,8 @@ You can use command tokens anywhere you specify a command line, including:
 
 * [buildcommands](buildcommands.md)
 * [cleancommands](cleancommands.md)
-* [os.execute](os.execute.md)
-* [os.executef](os.executef.md)
+* [os.execute](os/os.execute.md)
+* [os.executef](os/os.executef.md)
 * [postbuildcommands](postbuildcommands.md)
 * [prebuildcommands](prebuildcommands.md)
 * [prelinkcommands](prelinkcommands.md)
@@ -98,20 +99,27 @@ Command tokens are replaced with an appropriate command for the target shell. Fo
 
 The available tokens, and their replacements:
 
-| Token      | DOS/cmd                                     | Posix           |
-|------------|---------------------------------------------|-----------------|
-| {CHDIR}    | chdir {args}                                | cd {args}       |
-| {COPYFILE} | copy /B /Y {args}                           | cp -f {args}    |
-| {COPYDIR}  | xcopy /Q /E /Y /I {args}                    | cp -rf {args}   |
-| {DELETE}   | del {args}                                  | rm -rf {args}   |
-| {ECHO}     | echo {args}                                 | echo {args}     |
-| {MKDIR}    | IF NOT EXIST {args} (mkdir {args})          | mkdir -p {args} |
-| {MOVE}     | move /Y {args}                              | mv -f {args}    |
-| {RMDIR}    | rmdir /S /Q {args}                          | rm -rf {args}   |
-| {TOUCH}    | type nul >> {arg} && copy /b {arg}+,, {arg} | touch {args}    |
+| Token      | DOS/cmd                                     | Posix                 |
+|------------|---------------------------------------------|-----------------------|
+| {CHDIR}    | chdir {args}                                | cd {args}             |
+| {COPYFILE} | copy /B /Y {args}                           | cp -f {args}          |
+| {COPYFILEIFNEWER} | xcopy /D /Y {args}*                   | cp -u {args}          |
+| {COPYDIR}  | xcopy /Q /E /Y /I {args}                    | cp -rf {args}         |
+| {DELETE}   | del {args}                                  | rm -rf {args}         |
+| {ECHO}     | echo {args}                                 | echo {args}           |
+| {LINKDIR}  | mklink /d {args}                            | ln -s {reversed args} |
+| {LINKFILE} | mklink {args}                               | ln -s {reversed args} |
+| {MKDIR}    | IF NOT EXIST {args} (mkdir {args})          | mkdir -p {args}       |
+| {MOVE}     | move /Y {args}                              | mv -f {args}          |
+| {RMDIR}    | rmdir /S /Q {args}                          | rm -rf {args}         |
+| {TOUCH}    | type nul >> {arg} && copy /b {arg}+,, {arg} | touch {args}          |
 
 :::caution
-The following tokens are deprecated:
+The following tokens are deprecated in 5.0.0-beta1:
+:::
+
+:::danger
+The following tokens are removed in 5.0.0:
 :::
 
 | Token      | DOS                                         | Posix           | Remarks                             |
@@ -122,7 +130,7 @@ The following tokens are deprecated:
 
 Paths in Premake should be relative to premake script in which they appears.
 
-When you specify a path inside a commands, you have to wrap path insice `%[]` to allow correct trnasformation for the generator.
+When you specify a path inside a commands, you have to wrap path inside `%[]` to allow correct transformation for the generator.
 
 i.e.
 
@@ -131,6 +139,12 @@ buildcommands {
 	"{COPYFILE} %[%{!file.abspath}] %[%{!sln.location}/%{file.basename}]"
 }
 ```
+
+### Symbolic Links
+
+For Windows, it is required to create symbolic links from an elevated context or to have Developer Mode enabled. The minimum required Windows version to execute symbolic links is Windows 10. 
+
+LINKDIR and LINKFILE follow Windows `mklink` semantics, i.e. `{LINKFILE} LINK TARGET`, instead of Posix semantics.
 
 ## Tokens and Filters
 

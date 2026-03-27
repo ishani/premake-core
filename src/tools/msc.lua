@@ -1,9 +1,9 @@
 ---
 -- msc.lua
 -- Interface for the MS C/C++ compiler.
--- Author Jason Perkins
+-- Author Jess Perkins
 -- Modified by Manu Evans
--- Copyright (c) 2009-2015 Jason Perkins and the Premake project
+-- Copyright (c) 2009-2015 Jess Perkins and the Premake project
 ---
 
 
@@ -61,13 +61,10 @@
 			["C"] = "/TC",
 			["C++"] = "/TP",
 		},
-		flags = {
-			FatalCompileWarnings = "/WX",
-			LinkTimeOptimization = "/GL",
-			MultiProcessorCompile = "/MP",
-			NoMinimalRebuild = "/Gm-",
-			OmitDefaultLibrary = "/Zl"
+		fatalwarnings = {
+			All = "/WX"
 		},
+
 		floatingpoint = {
 			Fast = "/fp:fast",
 			Strict = "/fp:strict",
@@ -86,8 +83,21 @@
 			StdCall = "/Gz",
 			VectorCall = "/Gv",
 		},
+		dynamicdebugging = {
+			On = "/dynamicdeopt",
+		},
 		intrinsics = {
 			On = "/Oi",
+		},
+		linktimeoptimization = {
+			On = "/GL",
+			Fast = "/GL",
+		},
+		multiprocessorcompile = {
+			On = "/MP",
+		},
+		minimalrebuild = {
+			Off = "/Gm-",
 		},
 		optimize = {
 			Off = "/Od",
@@ -123,6 +133,9 @@
 		externalanglebrackets = {
 			On = "/external:anglebrackets",
 		},
+		nodefaultlib = {
+			On = "/Zl",
+		},
 		staticruntime = {
 			-- this option must always be emit (does it??)
 			_ = function(cfg) return getRuntimeFlag(cfg, false) end,
@@ -134,6 +147,13 @@
 		stringpooling = {
 			On = "/GF",
 			Off = "/GF-",
+		},
+		structmemberalign = {
+			[1] = "/Zp1",
+			[2] = "/Zp2",
+			[4] = "/Zp4",
+			[8] = "/Zp8",
+			[16] = "/Zp16",
 		},
 		symbols = {
 			On = "/Z7"
@@ -175,7 +195,8 @@
 	msc.cflags = {
 		cdialect = {
 			["C11"] = "/std:c11",
-			["C17"] = "/std:c17"
+			["C17"] = "/std:c17",
+			["C23"] = "/std:clatest"
 		}
 	}
 
@@ -196,6 +217,7 @@
 			["C++14"] = "/std:c++14",
 			["C++17"] = "/std:c++17",
 			["C++20"] = "/std:c++20",
+			["C++23"] = "/std:c++latest",
 			["C++latest"] = "/std:c++latest"
 		},
 		exceptionhandling = {
@@ -226,9 +248,9 @@
 
 	msc.defines = {
 		characterset = {
-			Default = { '/D"_UNICODE"', '/D"UNICODE"' },
-			MBCS = '/D"_MBCS"',
-			Unicode = { '/D"_UNICODE"', '/D"UNICODE"' },
+			Default = { '/D_UNICODE', '/DUNICODE' },
+			MBCS = '/D_MBCS',
+			Unicode = { '/D_UNICODE', '/DUNICODE' },
 			ASCII = { },
 		}
 	}
@@ -247,7 +269,7 @@
 		end
 
 		for _, define in ipairs(defines) do
-			table.insert(result, '/D"' .. define .. '"')
+			table.insert(result, '/D' .. p.esc(define))
 		end
 
 		if cfg and cfg.exceptionhandling == p.OFF then
@@ -258,11 +280,7 @@
 	end
 
 	function msc.getundefines(undefines)
-		local result = {}
-		for _, undefine in ipairs(undefines) do
-			table.insert(result, '/U"' .. undefine .. '"')
-		end
-		return result
+		return table.translate(undefines, function (undefine) return '/U' .. p.esc(undefine) end)
 	end
 
 
@@ -280,7 +298,7 @@
 		local result = {}
 
 		table.foreachi(cfg.forceincludes, function(value)
-			local fn = project.getrelative(cfg.project, value)
+			local fn = p.tools.getrelative(cfg.project, value)
 			table.insert(result, "/FI" .. p.quoted(fn))
 		end)
 
@@ -295,32 +313,45 @@
 -- Decorate include file search paths for the MSVC command line.
 --
 
-	function msc.getincludedirs(cfg, dirs, extdirs, frameworkdirs, includedirsafter)
+	function msc.getstructuredincludedirs(cfg, dirs, extdirs, frameworkdirs, includedirsafter)
 		local result = {}
 		for _, dir in ipairs(dirs) do
-			dir = project.getrelative(cfg.project, dir)
-			table.insert(result, '-I' ..  p.quoted(dir))
+			dir = p.tools.getrelative(cfg.project, dir)
+			table.insert(result, { flag = '/I', value = p.quoted(dir) })
 		end
 
 		for _, dir in ipairs(extdirs or {}) do
-			dir = project.getrelative(cfg.project, dir)
+			dir = p.tools.getrelative(cfg.project, dir)
 			if isVersionGreaterOrEqualTo(cfg.toolset, "msc-v142") then
-				table.insert(result, '/external:I' ..  p.quoted(dir))
+				table.insert(result, { flag = '/external:I', value = p.quoted(dir) })
 			else
-				table.insert(result, '-I' ..  p.quoted(dir))
+				table.insert(result, { flag = '/I', value = p.quoted(dir) })
 			end
 		end
 
 		for _, dir in ipairs(includedirsafter or {}) do
-			dir = project.getrelative(cfg.project, dir)
+			dir = p.tools.getrelative(cfg.project, dir)
 			if isVersionGreaterOrEqualTo(cfg.toolset, "msc-v142") then
-				table.insert(result, '/external:I' ..  p.quoted(dir))
+				table.insert(result, { flag = '/external:I', value = p.quoted(dir) })
 			else
-				table.insert(result, '-I' ..  p.quoted(dir))
+				table.insert(result, { flag = '/I', value = p.quoted(dir) })
 			end
 		end
 
 		return result
+	end
+
+
+	function msc.getincludedirs(cfg, dirs, extdirs, frameworkdirs, includedirsafter)
+		local result = msc.getstructuredincludedirs(cfg, dirs, extdirs, frameworkdirs, includedirsafter)
+		return table.flatten(table.translate(result, function(kv)
+			return kv.flag .. kv.value
+		end))
+	end
+
+
+	function msc.getstructuredimplicitincludedirs(toolname, language)
+		return {}
 	end
 
 
@@ -329,27 +360,43 @@
 --
 
 	msc.linkerFlags = {
-		flags = {
-			FatalLinkWarnings = "/WX",
-			LinkTimeOptimization = "/LTCG",
-			NoIncrementalLink = "/INCREMENTAL:NO",
-			NoManifest = "/MANIFEST:NO",
-			OmitDefaultLibrary = "/NODEFAULTLIB",
+		linkerfatalwarnings = {
+			All = "/WX",
+		},
+		manifest = {
+			Off = "/MANIFEST:NO",
+		},
+		incrementallink = {
+			Off = "/INCREMENTAL:NO",
 		},
 		kind = {
 			SharedLib = "/DLL",
 			WindowedApp = "/SUBSYSTEM:WINDOWS"
 		},
+		linktimeoptimization = {
+			On = "/LTCG",
+			Fast = "/LTCG:incremental",
+		},
+		nodefaultlib = {
+			On = "/NODEFAULTLIB",
+		},
 		symbols = {
 			On = "/DEBUG"
-		}
+		},
+		dynamicdebugging = {
+			On = "/dynamicdeopt",
+		},
 	}
 
 	msc.librarianFlags = {
-		flags = {
-			FatalLinkWarnings = "/WX",
+		linkerfatalwarnings = {
+			All = "/WX",
 		}
 	}
+
+	function msc.wholearchive(cfg)
+		return table.translate(config.getwholearchive(cfg), function(libraryname) return "/WHOLEARCHIVE:" .. libraryname end)
+	end
 
 	function msc.getldflags(cfg)
 		local map = iif(cfg.kind ~= p.STATICLIB, msc.linkerFlags, msc.librarianFlags)
@@ -376,6 +423,14 @@
 			table.insert(flags, '/NODEFAULTLIB:' .. ignore)
 		end
 
+		if cfg.kind == "ConsoleApp" or cfg.kind == "WindowedApp" or cfg.kind == "SharedLib" then
+			if cfg.profile then
+				table.insert(flags, "/PROFILE")
+			end
+		end
+
+		flags = table.join(flags, msc.wholearchive(cfg))
+
 		return flags
 	end
 
@@ -394,7 +449,7 @@
 		local flags = {}
 		local dirs = table.join(cfg.libdirs, cfg.syslibdirs)
 		for i, dir in ipairs(dirs) do
-			dir = project.getrelative(cfg.project, dir)
+			dir = p.tools.getrelative(cfg.project, dir)
 			table.insert(flags, '/LIBPATH:"' .. dir .. '"')
 		end
 		return flags
@@ -462,10 +517,22 @@
 --    default value should be used.
 --
 
+	msc.tools = {
+		cc = "cl",
+		cxx = "cl",
+		ar = "lib",
+		rc = "rc"
+	}
+
 	function msc.gettoolname(cfg, tool)
-		return nil
+		local toolset, version = p.tools.canonical(cfg.toolset or p.MSC)
+		-- TODO: Support versioning?
+		return msc.tools[tool]
 	end
 
+	function msc.gettooloutputext(tool)
+		return iif(tool == "rc", ".res", ".obj")
+	end
 
 
 	function msc.getwarnings(cfg)
@@ -479,7 +546,7 @@
 			table.insert(result, '/wd"' .. disable .. '"')
 		end
 
-		for _, fatal in ipairs(cfg.fatalwarnings) do
+		for _, fatal in ipairs(p.filterFatalWarnings(cfg.fatalwarnings)) do
 			table.insert(result, '/we"' .. fatal .. '"')
 		end
 

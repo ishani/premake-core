@@ -1,8 +1,8 @@
 --
 -- api.lua
 -- Implementation of the workspace, project, and configuration APIs.
--- Author Jason Perkins
--- Copyright (c) 2002-2015 Jason Perkins and the Premake project
+-- Author Jess Perkins
+-- Copyright (c) 2002-2015 Jess Perkins and the Premake project
 --
 
 	local p = premake
@@ -265,7 +265,15 @@
 
 		if type(field.allowed) == "table" then
 			for i, item in ipairs(field.allowed) do
-				field.allowed[item:lower()] = item
+				if type(item) == "string" then
+            		field.allowed[item:lower()] = item
+        		end
+			end
+		end
+
+		if type(field.reserved) == "table" then
+			for i, item in ipairs(field.reserved) do
+				field.reserved[item:lower()] = item
 			end
 		end
 
@@ -437,12 +445,43 @@
 			end
 		else
 			local field = p.fields[name]
-			field.deprecated = field.deprecated or {}
-			field.deprecated[value] = {
+			field.deprecatedvalues = field.deprecatedvalues or {}
+			field.deprecatedvalues[value] = {
 				add = addHandler,
 				remove = removeHandler,
 				message = message
 			}
+		end
+	end
+
+
+--
+-- Mark a specific alias value of a field as deprecated.
+--
+-- @param name
+--   The name of the field containing the alias.
+-- @param alias
+--   The alias or aliases to mark as deprecated. May be a string
+--   for a single alias or an array of multiple aliases.
+-- @param message
+--   A optional message providing more information, to be shown
+--   as part of the deprecation warning message.
+--
+
+	function api.deprecateAlias(name, alias, message)
+		if type(alias) == "table" then
+			for _, a in pairs(alias) do
+				api.deprecateAlias(name, a, message)
+			end
+		else
+			local field = p.fields[name]
+			field.deprecatedaliases = field.deprecatedaliases or {}
+			local actual = field.aliases[alias:lower()]
+			if actual then
+				field.deprecatedaliases[alias] = {
+					message = message
+				}
+			end
 		end
 	end
 
@@ -540,7 +579,7 @@
 			error(err, 3)
 		end
 
-		local hasDeprecatedValues = (type(field.deprecated) == "table")
+		local hasDeprecatedValues = (type(field.deprecatedvalues) == "table")
 
 		-- Build a list of values to be removed. If this field has deprecated
 		-- values, check to see if any of those are going to be removed by this
@@ -550,8 +589,8 @@
 		local removes = {}
 
 		local function check(value)
-			if field.deprecated[value] then
-				local handler = field.deprecated[value]
+			if field.deprecatedvalues[value] then
+				local handler = field.deprecatedvalues[value]
 				if handler.remove then handler.remove(value) end
 				if handler.message and api._deprecations ~= "off" then
 					local caller = filelineinfo(8)
@@ -589,7 +628,7 @@
 					error { msg=err }
 				end
 
-				if field.deprecated then
+				if field.deprecatedvalues then
 					check(value)
 				end
 
@@ -634,60 +673,86 @@
 --
 
 	function api.checkValue(field, value, kind)
-		if not field.allowed then
+
+		if field.allowed then
+
+			local canonical, result
+			local lowerValue = value:lower()
+
+			if field.deprecatedaliases and field.deprecatedaliases[lowerValue] then
+				local handler = field.deprecatedaliases[lowerValue]
+				if handler.message and api._deprecations ~= "off" then
+					local caller = filelineinfo(9)
+					local key = field.name .. "_" .. value .. "_" .. caller
+					p.warnOnce(key, "the %s alias %s has been deprecated and will be removed.\n   %s\n   @%s\n", field.name, lowerValue, handler.message, caller)
+					if api._deprecations == "error" then
+						return nil, "deprecation errors enabled"
+					end
+				end
+			end
+
+			if field.aliases then
+				canonical = field.aliases[lowerValue]
+			end
+
+			if not canonical then
+				if type(field.allowed) == "function" then
+					canonical = field.allowed(value, kind or "string")
+				else
+					canonical = field.allowed[lowerValue]
+				end
+			end
+
+
+			-- If a tool was not found, check to see if there is a function in the
+			-- table to check against.  For each function in the table, check if
+			-- the value is allowed (break early if so).
+			if not canonical and type(field.allowed) == "table" then
+				for _, allow in ipairs(field.allowed)
+				do
+					if type(allow) == "function" then
+						canonical = allow(value, kind or "string")
+					end
+
+					if canonical then
+						break
+					end
+				end
+			end
+
+			if not canonical then
+				return nil, "invalid value '" .. value .. "' for " .. field.name
+			end
+
+			if field.deprecatedvalues and field.deprecatedvalues[canonical] then
+				local handler = field.deprecatedvalues[canonical]
+				handler.add(canonical)
+				if handler.message and api._deprecations ~= "off" then
+					local caller =  filelineinfo(9)
+					local key = field.name .. "_" .. value .. "_" .. caller
+					p.warnOnce(key, "the %s value %s has been deprecated and will be removed.\n   %s\n   @%s\n", field.name, canonical, handler.message, caller)
+					if api._deprecations == "error" then
+						return nil, "deprecation errors enabled"
+					end
+				end
+			end
+
+			return canonical
+
+		elseif field.reserved then
+
+			local lowerValue = value:lower()
+			local canonical = field.reserved[lowerValue]
+
+			if canonical then
+				return canonical
+			else
+				return value
+			end
+
+		else
 			return value
 		end
-
-		local canonical, result
-		local lowerValue = value:lower()
-
-		if field.aliases then
-			canonical = field.aliases[lowerValue]
-		end
-
-		if not canonical then
-			if type(field.allowed) == "function" then
-				canonical = field.allowed(value, kind or "string")
-			else
-				canonical = field.allowed[lowerValue]
-			end
-		end
-
-
-		-- If a tool was not found, check to see if there is a function in the
-		-- table to check against.  For each function in the table, check if
-		-- the value is allowed (break early if so).
-		if not canonical and type(field.allowed) == "table" then
-			for _, allow in ipairs(field.allowed)
-			do
-				if type(allow) == "function" then
-					canonical = allow(value, kind or "string")
-				end
-
-				if canonical then
-					break
-				end
-			end
-		end
-
-		if not canonical then
-			return nil, "invalid value '" .. value .. "' for " .. field.name
-		end
-
-		if field.deprecated and field.deprecated[canonical] then
-			local handler = field.deprecated[canonical]
-			handler.add(canonical)
-			if handler.message and api._deprecations ~= "off" then
-				local caller =  filelineinfo(9)
-				local key = field.name .. "_" .. value .. "_" .. caller
-				p.warnOnce(key, "the %s value %s has been deprecated and will be removed.\n   %s\n   @%s\n", field.name, canonical, handler.message, caller)
-				if api._deprecations == "error" then
-					return nil, "deprecation errors enabled"
-				end
-			end
-		end
-
-		return canonical
 	end
 
 
@@ -1139,25 +1204,6 @@
 			return true
 		end
 	})
-
-
-
----
--- Start a new block of configuration settings, using the old, "open"
--- style of matching without field prefixes.
----
-
-	function configuration(terms)
-		-- Sep 16 2021
-		premake.warnOnce("configuration", "`configuration` has been deprecated; use `filter` instead (https://premake.github.io/docs/Filters/)")
-		if terms then
-			if (type(terms) == "table" and #terms == 1 and terms[1] == "*") or (terms == "*") then
-				terms = nil
-			end
-			configset.addblock(api.scope.current, {terms}, os.getcwd())
-		end
-		return api.scope.current
-	end
 
 
 

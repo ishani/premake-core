@@ -1,4 +1,4 @@
-structmemberalign - This page was auto-generated. Feel free to help us improve the documentation by creating a pull request.
+Specifies 1, 2, 4, 8, 16-byte boundary for struct member alignment.
 
 ```lua
 structmemberalign (value)
@@ -8,23 +8,26 @@ structmemberalign (value)
 
 `value` is one of:
 
-* `1`: needs documentation
-* `2`: needs documentation
-* `4`: needs documentation
-* `8`: needs documentation
-* `16`: needs documentation
+| Value | Description |
+|-------|-------------|
+| 1 | 1 byte struct member alignment |
+| 2 | 2 byte struct member alignment |
+| 4 | 4 byte struct member alignment |
+| 8 | 8 byte struct member alignment |
+| 16 | 16 byte struct member alignment |
 
 ## Applies To ###
 
-The `config` scope.
+Project configurations.
 
 ### Availability ###
 
-Premake 5.0.0 alpha 14 or later.
+Premake 5.0.0-alpha14 or later for Visual Studio (non-clang).
+Premake 5.0.0-beta7 for others
 
 ### Examples ###
 
 ```lua
-structmemberalign (value)
+structmemberalign 1
 ```
 

@@ -1,7 +1,7 @@
 ---
 -- gcc.lua
 -- Provides GCC-specific configuration strings.
--- Copyright (c) 2002-2015 Jason Perkins and the Premake project
+-- Copyright (c) 2002-2015 Jess Perkins and the Premake project
 ---
 
 	local p = premake
@@ -12,6 +12,12 @@
 	local project = p.project
 	local config = p.config
 
+	p.api.register {
+		name = "gccprefix",
+		scope = "config",
+		kind = "string",
+		tokens = true,
+	}
 
 --
 -- Returns list of C preprocessor flags for a configuration.
@@ -48,18 +54,24 @@
 --
 	gcc.shared = {
 		architecture = {
-			x86 = "-m32",
-			x86_64 = "-m64",
+			x86 = function (cfg) return iif(cfg.system == p.MACOSX, "-arch i386", "-m32") end,
+			x86_64 = function (cfg) return iif(cfg.system == p.MACOSX, "-arch x86_64", "-m64") end,
+			AARCH64 = function (cfg) return iif(cfg.system == p.MACOSX, "-arch arm64", nil) end,
+		},
+		fatalwarnings = {
+			All = "-Werror",
 		},
 		flags = {
-			FatalCompileWarnings = "-Werror",
-			LinkTimeOptimization = "-flto",
 			ShadowedVariables = "-Wshadow",
 			UndefinedIdentifiers = "-Wundef",
 		},
 		floatingpoint = {
 			Fast = "-ffast-math",
 			Strict = "-ffloat-store",
+		},
+		linktimeoptimization = {
+			On = "-flto",
+			Fast = "-flto",
 		},
 		strictaliasing = {
 			Off = "-fno-strict-aliasing",
@@ -90,6 +102,7 @@
 			SSSE3 = "-mssse3",
 			["SSE4.1"] = "-msse4.1",
 			["SSE4.2"] = "-msse4.2",
+			ALTIVEC = "-maltivec",
 		},
 		isaextensions = {
 			MOVBE = "-mmovbe",
@@ -138,6 +151,34 @@
 			["C++"] = "-x c++",
 			["Objective-C"] = "-x objective-c",
 			["Objective-C++"] = "-x objective-c++",
+		},
+		sanitize = {
+			Address = "-fsanitize=address",
+			Thread = "-fsanitize=thread",
+			UndefinedBehavior = "-fsanitize=undefined",
+		},
+		structmemberalign = {
+			[1] = "-fpack-struct=1",
+			[2] = "-fpack-struct=2",
+			[4] = "-fpack-struct=4",
+			[8] = "-fpack-struct=8",
+			[16] = "-fpack-struct=16",
+		},
+		visibility = {
+			Default = "-fvisibility=default",
+			Hidden = "-fvisibility=hidden",
+			Internal = "-fvisibility=internal",
+			Protected = "-fvisibility=protected",
+		},
+		inlinesvisibility = {
+			Hidden = "-fvisibility-inlines-hidden"
+		},
+		profile = {
+			On = "-pg",
+		},
+		useshortenums = {
+			On = "-fshort-enums",
+			Off = "-fno-short-enums",
 		}
 	}
 
@@ -148,11 +189,13 @@
 			["C99"] = "-std=c99",
 			["C11"] = "-std=c11",
 			["C17"] = "-std=c17",
+			["C23"] = "-std=c23",
 			["gnu89"] = "-std=gnu89",
 			["gnu90"] = "-std=gnu90",
 			["gnu99"] = "-std=gnu99",
 			["gnu11"] = "-std=gnu11",
-			["gnu17"] = "-std=gnu17"
+			["gnu17"] = "-std=gnu17",
+			["gnu23"] = "-std=gnu23",
 		}
 	}
 
@@ -172,7 +215,7 @@
 		for _, disable in ipairs(cfg.disablewarnings) do
 			table.insert(result, '-Wno-' .. disable)
 		end
-		for _, fatal in ipairs(cfg.fatalwarnings) do
+		for _, fatal in ipairs(p.filterFatalWarnings(cfg.fatalwarnings)) do
 			table.insert(result, '-Werror=' .. fatal)
 		end
 		return result
@@ -204,9 +247,6 @@
 		exceptionhandling = {
 			Off = "-fno-exceptions"
 		},
-		flags = {
-			NoBufferSecurityCheck = "-fno-stack-protector",
-		},
 		cppdialect = {
 			["C++98"] = "-std=c++98",
 			["C++0x"] = "-std=c++0x",
@@ -217,6 +257,8 @@
 			["C++17"] = "-std=c++17",
 			["C++2a"] = "-std=c++2a",
 			["C++20"] = "-std=c++20",
+			["C++2b"] = "-std=c++2b",
+			["C++23"] = "-std=c++23",
 			["gnu++98"] = "-std=gnu++98",
 			["gnu++0x"] = "-std=gnu++0x",
 			["gnu++11"] = "-std=gnu++11",
@@ -226,22 +268,16 @@
 			["gnu++17"] = "-std=gnu++17",
 			["gnu++2a"] = "-std=gnu++2a",
 			["gnu++20"] = "-std=gnu++20",
-			["C++latest"] = "-std=c++20",
+			["gnu++2b"] = "-std=gnu++2b",
+			["gnu++23"] = "-std=gnu++23",
+			["C++latest"] = "-std=c++23",
+		},
+		buffersecuritycheck = {
+			Off = "-fno-stack-protector",
+			On = "-fstack-protector"
 		},
 		rtti = {
 			Off = "-fno-rtti"
-		},
-		sanitize = {
-			Address = "-fsanitize=address",
-		},
-		visibility = {
-			Default = "-fvisibility=default",
-			Hidden = "-fvisibility=hidden",
-			Internal = "-fvisibility=internal",
-			Protected = "-fvisibility=protected",
-		},
-		inlinesvisibility = {
-			Hidden = "-fvisibility-inlines-hidden"
 		}
 	}
 
@@ -258,7 +294,7 @@
 -- Decorate defines for the GCC command line.
 --
 
-	function gcc.getdefines(defines)
+	function gcc.getdefines(defines, cfg)
 		local result = {}
 		for _, define in ipairs(defines) do
 			table.insert(result, '-D' .. p.esc(define))
@@ -289,7 +325,7 @@
 		local result = {}
 
 		table.foreachi(cfg.forceincludes, function(value)
-			local fn = project.getrelative(cfg.project, value)
+			local fn = p.tools.getrelative(cfg.project, value)
 			table.insert(result, string.format('-include %s', p.quoted(fn)))
 		end)
 
@@ -319,37 +355,91 @@
 --    An array of symbols with the appropriate flag decorations.
 --
 
-	function gcc.getincludedirs(cfg, dirs, extdirs, frameworkdirs, includedirsafter)
+	function gcc.getstructuredincludedirs(cfg, dirs, extdirs, frameworkdirs, includedirsafter)
 		local result = {}
 		for _, dir in ipairs(dirs) do
-			dir = project.getrelative(cfg.project, dir)
-			table.insert(result, '-I' .. p.quoted(dir))
+			dir = p.tools.getrelative(cfg.project, dir)
+			table.insert(result, { flag = '-I', value = dir })
 		end
 
 		if table.contains(os.getSystemTags(cfg.system), "darwin") then
 			for _, dir in ipairs(frameworkdirs or {}) do
-				dir = project.getrelative(cfg.project, dir)
-				table.insert(result, '-F' .. p.quoted(dir))
+				dir = p.tools.getrelative(cfg.project, dir)
+				table.insert(result, { flag = '-F', value = dir })
 			end
 		end
 
 		for _, dir in ipairs(extdirs or {}) do
-			dir = project.getrelative(cfg.project, dir)
-			table.insert(result, '-isystem ' .. p.quoted(dir))
+			dir = p.tools.getrelative(cfg.project, dir)
+			table.insert(result, { flag = '-isystem', value = dir })
 		end
 
 		for _, dir in ipairs(includedirsafter or {}) do
-			dir = project.getrelative(cfg.project, dir)
-			table.insert(result, '-idirafter ' .. p.quoted(dir))
+			dir = p.tools.getrelative(cfg.project, dir)
+			table.insert(result, { flag = '-idirafter', value = dir })
 		end
 
 		return result
 	end
 
+
+	function gcc.getincludedirs(cfg, dirs, extdirs, frameworkdirs, incdirsafter)
+		local result = gcc.getstructuredincludedirs(cfg, dirs, extdirs, frameworkdirs, incdirsafter)
+		return table.translate(result, function(kv)
+			return kv.flag .. p.quoted(kv.value)
+		end)
+	end
+
+
+	function gcc.getstructuredimplicitincludedirs(cfg, toolname, language)
+		local cmd = nil
+
+		if language == "C" then
+			cmd = toolname .. " -v -E -x c " .. iif(os.istarget("windows"), "nul", "/dev/null")
+		elseif language == "C++" then
+			cmd = toolname .. " -v -E -x c++ " .. iif(os.istarget("windows"), "nul", "/dev/null")
+		else
+			p.warn("Unsupported language '%s' for implicit include directories", language)
+			return {}
+		end
+
+		local stdout, stderr = os.outputof(cmd, "both")
+		if not stdout or not stderr then
+			p.warn("Failed to execute command '%s' to get implicit include directories", cmd)
+			return {}
+		end
+
+		-- Lines between "#include <...> search starts here:" and "End of search list." are the implicit include directories
+		local result = {}
+		local inSearchList = false
+		for line in stdout:gmatch("[^\r\n]+") do
+			if line:find("#include <...> search starts here:") then
+				inSearchList = true
+			elseif line:find("End of search list.") then
+				inSearchList = false
+			elseif inSearchList then
+				local trimmed = line:match("^%s*(.-)%s*$") -- trim whitespace
+				
+				-- If on windows, replace backslashes with forward slashes to normalize the paths
+				if os.istarget("windows") then
+					trimmed = trimmed:gsub("\\", "/")
+				end
+
+				table.insert(result, {
+					flag = '-isystem',
+					value = trimmed
+				})
+			end
+		end
+
+		return result
+	end
+
+
 	-- relative pch file path if any
 	function gcc.getpch(cfg)
 		-- If there is no header, or if PCH has been disabled, I can early out
-		if not cfg.pchheader or cfg.flags.NoPCH then
+		if not cfg.pchheader or cfg.enablepch == p.OFF then
 			return nil
 		end
 
@@ -370,18 +460,18 @@
 		-- test locally in the project folder first (this is the most likely location)
 		local testname = path.join(cfg.project.basedir, pch)
 		if os.isfile(testname) then
-			return project.getrelative(cfg.project, testname)
+			return p.tools.getrelative(cfg.project, testname)
 		else
 			-- else scan in all include dirs.
 			for _, incdir in ipairs(cfg.includedirs) do
 				testname = path.join(incdir, pch)
 				if os.isfile(testname) then
-					return project.getrelative(cfg.project, testname)
+					return p.tools.getrelative(cfg.project, testname)
 				end
 			end
 		end
 
-		return project.getrelative(cfg.project, path.getabsolute(pch))
+		return p.tools.getrelative(cfg.project, path.getabsolute(pch))
 	end
 
 --
@@ -407,19 +497,29 @@
 		end
 
 		for _, fullpath in ipairs(dirs) do
+			-- Try to make rpath relative to target dir
 			local rpath = path.getrelative(cfg.buildtarget.directory, fullpath)
-			if table.contains(os.getSystemTags(cfg.system), "darwin") then
-				rpath = "@loader_path/" .. rpath
-			elseif (cfg.system == p.LINUX) then
-				rpath = iif(rpath == ".", "", "/" .. rpath)
-				rpath = "$$ORIGIN" .. rpath
-			end
 
-			if mode == "linker" then
-				rpath = "-Wl,-rpath,'" .. rpath .. "'"
-			end
+			if path.isabsolute(rpath) then				
+				if mode == "linker" then
+					rpath = "-Wl,-rpath,'" .. rpath .. "'"
+				end
 
-			table.insert(result, rpath)
+				table.insert(result, rpath)
+			else
+				if table.contains(os.getSystemTags(cfg.system), "darwin") then
+					rpath = "@loader_path/" .. rpath
+				elseif (cfg.system == p.LINUX) then
+					rpath = iif(rpath == ".", "", "/" .. rpath)
+					rpath = "$$ORIGIN" .. rpath
+				end
+
+				if mode == "linker" then
+					rpath = "-Wl,-rpath,'" .. rpath .. "'"
+				end
+
+				table.insert(result, rpath)
+			end
 		end
 
 		return result
@@ -456,16 +556,18 @@
 
 	gcc.ldflags = {
 		architecture = {
-			x86 = "-m32",
-			x86_64 = "-m64",
+			x86 = function (cfg) return iif(cfg.system == p.MACOSX, "-arch i386", "-m32") end,
+			x86_64 = function (cfg) return iif(cfg.system == p.MACOSX, "-arch x86_64", "-m64") end,
+			AARCH64 = function (cfg) return iif(cfg.system == p.MACOSX, "-arch arm64", nil) end,
 		},
-		flags = {
-			LinkTimeOptimization = "-flto",
+		linkerfatalwarnings = {
+			All = "-Wl,--fatal-warnings",
 		},
+		linktimeoptimization = gcc.shared.linktimeoptimization,
 		kind = {
 			SharedLib = function(cfg)
 				local r = { gcc.getsharedlibarg(cfg) }
-				if cfg.system == p.WINDOWS and not cfg.flags.NoImportLib then
+				if cfg.system == p.WINDOWS and cfg.useimportlib ~= p.OFF then
 					table.insert(r, '-Wl,--out-implib="' .. cfg.linktarget.relpath .. '"')
 				elseif cfg.system == p.LINUX then
 					table.insert(r, '-Wl,-soname=' .. p.quoted(cfg.linktarget.name))
@@ -478,8 +580,28 @@
 				if cfg.system == p.WINDOWS then return "-mwindows" end
 			end,
 		},
+		linker = {
+			Default = "",
+			LLD = "-fuse-ld=lld"
+		},
+		mapfile = {
+			On = function(cfg)
+				-- If a map file path has been explicitly provided, use that
+				-- otherwise, just use the default link target path with a .map extension (no lib, exe, etc)
+				local path = cfg.mapfilepath or path.replaceextension(cfg.linktarget.relpath, ".map")
+				return "-Wl,-Map=" .. p.quoted(p.tools.getrelative(cfg.project, path))
+			end,
+		},
+		profile = {
+			On = "-pg",
+		},
+		openmp = {
+			On = "-fopenmp"
+		},
 		sanitize = {
 			Address = "-fsanitize=address",
+			Thread = "-fsanitize=thread",
+			UndefinedBehavior = "-fsanitize=undefined",
 		},
 		system = {
 			wii = "$(MACHDEP)",
@@ -490,8 +612,22 @@
 		}
 	}
 
+	function gcc.wholearchive(cfg)
+		if cfg.system == p.MACOSX then
+			return table.translate(config.getwholearchive(cfg), function(libraryname) return "-force_load " .. libraryname end)
+		else
+			if #cfg.wholearchive == 0 then
+				return {}
+			end
+			return table.join({ "-Wl,--whole-archive" }, config.getwholearchive(cfg), { "-Wl,--no-whole-archive" })
+		end
+	end
+
 	function gcc.getldflags(cfg)
 		local flags = config.mapFlags(cfg, gcc.ldflags)
+
+		flags = table.join(flags, gcc.wholearchive(cfg))
+
 		return flags
 	end
 
@@ -535,14 +671,14 @@
 
 		if table.contains(os.getSystemTags(cfg.system), "darwin") then
 			for _, dir in ipairs(cfg.frameworkdirs) do
-				dir = project.getrelative(cfg.project, dir)
+				dir = p.tools.getrelative(cfg.project, dir)
 				table.insert(flags, '-F' .. p.quoted(dir))
 			end
 		end
 
-		if cfg.flags.RelativeLinks then
+		if cfg.userelativelinks == p.ON then
 			for _, dir in ipairs(config.getlinks(cfg, "siblings", "directory")) do
-				local libFlag = "-L" .. p.project.getrelative(cfg.project, dir)
+				local libFlag = "-L" .. p.tools.getrelative(cfg.project, dir)
 				if not table.contains(flags, libFlag) then
 					table.insert(flags, libFlag)
 				end
@@ -569,7 +705,7 @@
 		local result = {}
 
 		if not systemonly then
-			if cfg.flags.RelativeLinks then
+			if cfg.userelativelinks == p.ON then
 				local libFiles = config.getlinks(cfg, "siblings", "basename")
 				for _, link in ipairs(libFiles) do
 					if string.startswith(link, "lib") then
@@ -597,15 +733,12 @@
 			elseif path.isobjectfile(link) then
 				table.insert(result, link)
 			else
-				local endswith = function(s, ptrn)
-					return ptrn == string.sub(s, -string.len(ptrn))
-				end
 				local name = path.getname(link)
 				-- Check whether link mode decorator is present
-				if endswith(name, ":static") then
+				if name:endswith(":static") then
 					name = string.sub(name, 0, -8)
 					table.insert(static_syslibs, "-l" .. name)
-				elseif endswith(name, ":shared") then
+				elseif name:endswith(":shared") then
 					name = string.sub(name, 0, -8)
 					table.insert(shared_syslibs, "-l" .. name)
 				else
@@ -681,8 +814,9 @@
 		else
 			version = ""
 		end
-		if ((cfg.gccprefix  or version ~= "") and gcc.tools[tool]) or tool == "rc" then
-			return (cfg.gccprefix or "") .. gcc.tools[tool] .. version
-		end
-		return nil
+		return (cfg.gccprefix or "") .. gcc.tools[tool] .. version
+	end
+
+	function gcc.gettooloutputext(tool)
+		return iif(tool == "rc", ".res", ".o")
 	end

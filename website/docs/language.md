@@ -14,7 +14,6 @@ language ("lang")
 | `C++`    | Built-in; always available    |
 | `C#`     | Built-in; always available    |
 | `F#`     | Built-in; always available    |
-| `D`      | Built-in; always available ([API and support](https://github.com/premake/premake-dlang/wiki)) |
 
 
 ### Applies To ###
@@ -23,7 +22,7 @@ Project configurations.
 
 ### Availability ###
 
-`C`, `C++`, and `C#` are available in Premake 4.0 or later. Others are 5.0 or later.
+`C`, `C++`, and `C#` are available in Premake 4.0 or later. Others are 5.0.0-alpha1 or later.
 
 ### Examples ###
 

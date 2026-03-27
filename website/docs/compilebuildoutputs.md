@@ -1,26 +1,42 @@
-compilebuildoutputs
+Specify if generated file from [`buildcommands`](buildcommands.md) should be compiled or not.
 
 ```lua
-compilebuildoutputs "value"
+compilebuildoutputs ("value")
 ```
 
 ### Parameters ###
 
 `value` one of:
-* `on`  - needs documentation.
-* `off` - needs documentation.
+
+| Value | Description |
+|-------|-------------|
+| On    | Generated file should be compiled. |
+| Off   | Generated file should not be compiled. |
 
 ### Applies To ###
 
-The `config` scope.
+File configurations.
 
 ### Availability ###
 
-Premake 5.0.0 alpha 12 or later.
+Premake 5.0.0-alpha12 or later.
 
 ### Examples ###
 
 ```lua
-compilebuildoutputs "value"
+filter "files:**.cpp.in"
+  buildmessage "generate %{file.basename} from %{file.relpath}"
+  buildoutputs { "%{cfg.objdir}/%{file.basename}") }
+  buildcommands { "MyScript %[%{!file.abspath}] %[%{!cfg.objdir}/%{file.basename}]" }
+  compilebuildoutputs "on"
+filter "files:**.h.in"
+  buildmessage "generate %{file.basename} from %{file.relpath}"
+  buildoutputs { "%{cfg.objdir}/%{file.basename}") }
+  buildcommands { "MyScript %[%{!file.abspath}] %[%{!cfg.objdir}/%{file.basename}]" }
+  compilebuildoutputs "off"
+filter {}
 ```
 
+## See Also ##
+
+* [Custom Build Commands](Custom-Build-Commands.md)

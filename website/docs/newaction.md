@@ -17,7 +17,7 @@ newaction { description }
 | targetos    | If the toolset targets a specific OS, the [identifier](system.md) for that OS. |
 | valid_kinds | The list of [project kinds](kind.md) supported by the action. |
 | valid_languages | The list of [languages](language.md) supported by the action. |
-| valid_tools | The list of [tools](toolset.md) supported by the action. |
+| valid_tools | The list of [tools](toolset.md) supported by the action. Alternatively, a function taking a project and returning a list of tools can be used. |
 | toolset | Default [tools](toolset.md). |
 | onStart     | A callback marking the start of action processing. |
 | onWorkspace | A callback for each workspace specified in the user script. |
@@ -28,6 +28,8 @@ newaction { description }
 | onCleanProject  | A callback for each project, when the clean action is selected. |
 | onCleanTarget   | A callback for each target, when the clean action is selected. |
 | pathVars    | A map of Premake tokens to toolset specific identifiers. |
+| aliases | A list of action names to alias to this action. |
+| deprecatedaliases | A table containing a mapping of aliases to callbacks to invoke on action invocation and filters containing the deprecated alias. Each value in the deprecatedaliases table is a table optionally containing an "action" and "filter" key. The values in this table are functions taking zero arguments. See the example below. |
 
 The callbacks will fire in this order:
 
@@ -47,9 +49,13 @@ The following fields have been deprecated:
 | os          | Deprecated, use targetos instead. |
 | onSolution  | Deprecated, use onWorkspace instead. |
 
+### Applies To ###
+
+Global configurations.
+
 ### Availability ###
 
-Premake 5.0 and later.
+Premake 5.0.0-alpha1 and later.
 
 
 ### Examples ###
@@ -62,6 +68,41 @@ newaction {
    description = "Install the software",
    execute     = function ()
       os.copyfile("bin/debug/myprogram", "/usr/local/bin/myprogram")
+   end
+}
+```
+
+Register a new action with aliases and deprecations.
+
+```lua
+newaction {
+   trigger           = "myaction",
+   description       = "Custom action",
+   aliases           = { "myalias", "deprecatedalias" },
+   deprecatedaliases = {
+      ["deprecatedalias" ] = {
+         [ "action" ] = function()
+                           p.warn("Use myaction instead of deprecatedalias.") 
+                        end,
+         [ "filter" ] = function()
+                           p.warn("deprecatedalias has been deprecated. Filter on myaction instead.") 
+                        end
+      }
+   }
+}
+```
+
+Register a new action with a dynamic list of valid tools.
+
+```lua
+newaction {
+   trigger     = "myaction",
+   valid_tools = function(prj)
+      local tools = { "msc" }
+      if prj.system == p.LINUX then
+         table.insert(tools, "gcc")
+      end
+      return tools
    end
 }
 ```

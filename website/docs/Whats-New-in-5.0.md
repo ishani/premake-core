@@ -20,19 +20,19 @@ title: What's New in 5.0
 * [Makefile Projects](Makefile-Projects.md)
 * [Modules](Developing-Modules.md)
 * [Per-Configuration File Lists](files.md)
-* [Per-File Configurations](configuration.md)
+* [Per-File Configurations](filter.md)
 * [Per-Project Configurations](Configurations-and-Platforms.md)
 * [Platforms](Configurations-and-Platforms.md)
 * [Removes](Removing-Values.md)
 * [System Scripts](System-Scripts.md)
 * [Tokens](Tokens.md)
-* [HTTP support](http.download.md)
+* [HTTP support](http/http.download.md)
 
 ## New or Modified Globals ##
 
-* [_MAIN_SCRIPT](premake_MAIN_SCRIPT.md)
-* [_MAIN_SCRIPT_DIR](premake_MAIN_SCRIPT_DIR.md)
-* [_PREMAKE_DIR](premake_PREMAKE_DIR.md)
+* [_MAIN_SCRIPT](globals/premake_MAIN_SCRIPT.md)
+* [_MAIN_SCRIPT_DIR](globals/premake_MAIN_SCRIPT_DIR.md)
+* [_PREMAKE_DIR](globals/premake_PREMAKE_DIR.md)
 
 ## New or Modified API calls ##
 
@@ -50,7 +50,6 @@ title: What's New in 5.0
 * [clr](clr.md) (new, replaces flags `Managed` and `Unsafe`)
 * [configfile](configfile.md) (new)
 * [configmap](configmap.md) (new)
-* [configuration](configuration.md) (retired)
 * [configurations](configurations.md) (modified)
 * [copylocal](copylocal.md) (new)
 * [debugcommand](debugcommand.md) (new)
@@ -66,7 +65,6 @@ title: What's New in 5.0
 * [editandcontinue](editandcontinue.md) (new, replaces flag `NoEditAndContinue`)
 * [editorintegration](editorintegration.md) (new)
 * [enablewarnings](enablewarnings.md) (new)
-* [endian](endian.md) (new)
 * [entrypoint](entrypoint.md) (new)
 * [exceptionhandling](exceptionhandling.md) (new)
 * [external](external.md) (new)
@@ -83,7 +81,6 @@ title: What's New in 5.0
 * [floatingpoint](floatingpoint.md) (new, replaces flags `FloatFast` and `FloatStrict`)
 * [forceincludes](forceincludes.md) (new)
 * [forceusings](forceusings.md) (new)
-* [fpu](fpu.md) (new)
 * [gccprefix](gccprefix.md) (new)
 * [group](group.md) (new)
 * [icon](icon.md) (new)
@@ -115,7 +112,6 @@ title: What's New in 5.0
 * [solution](workspace.md) (name changed)
 * [startproject](startproject.md) (new)
 * [strictaliasing](strictaliasing.md) (new)
-* [sysincludedirs](sysincludedirs.md) (new)
 * [syslibdirs](syslibdirs.md) (new)
 * [system](system.md) (new)
 * [toolset](toolset.md) (new)
@@ -127,26 +123,25 @@ title: What's New in 5.0
 
 ## New or Modified Lua library calls ##
 
-* [includeexternal](includeexternal.md) (new)
-* [require](require.md) (modified)
+* [includeexternal](globals/includeexternal.md) (new)
+* [require](globals/require.md) (modified)
 
 * [debug.prompt](debug.prompt.md) (new)
 
-* [http.download](http.download.md) (new)
-* [http.get](http.get.md) (new)
+* [http.download](http/http.download.md) (new)
+* [http.get](http/http.get.md) (new)
 
-* [os.chmod](os.chmod.md) (new)
-* [os.islink](os.islink.md) (new)
-* [os.realpath](os.realpath.md) (new)
-* [os.uuid](os.uuid.md) (can now generated deterministic name-based UUIDs)
+* [os.chmod](os/os.chmod.md) (new)
+* [os.islink](os/os.islink.md) (new)
+* [os.realpath](os/os.realpath.md) (new)
+* [os.uuid](os/os.uuid.md) (can now generated deterministic name-based UUIDs)
 
-* [path.getabsolute](path.getabsolute.md) (new "relative to" argument)
+* [path.getabsolute](path/path.getabsolute.md) (new "relative to" argument)
 
-* [string.hash](string.hash.md) (new)
+* [string.hash](string/string.hash.md) (new)
 
 ## Deprecated Values and Functions ##
 
-* [buildrule](buildrule.md)
 * [flags](flags.md):
 	* Component
 	* EnableSSE, EnableSSE2: use [vectorextensions](vectorextensions.md) instead

@@ -1,7 +1,7 @@
 --
 -- tests/actions/vstudio/sln2005/test_platforms.lua
 -- Test the Visual Studio 2005-2010 platform mapping blocks.
--- Copyright (c) 2009-2014 Jason Perkins and the Premake project
+-- Copyright (c) 2009-2014 Jess Perkins and the Premake project
 --
 
 	local p = premake
@@ -648,12 +648,12 @@ GlobalSection(SolutionConfigurationPlatforms) = preSolution
 	Release|Windows = Release|Windows
 EndGlobalSection
 GlobalSection(ProjectConfigurationPlatforms) = postSolution
-	{C9135098-6047-8142-B10E-D27E7F73FCB3}.Debug|Linux.ActiveCfg = Debug Linux|Win32
-	{C9135098-6047-8142-B10E-D27E7F73FCB3}.Debug|Linux.Build.0 = Debug Linux|Win32
+	{C9135098-6047-8142-B10E-D27E7F73FCB3}.Debug|Linux.ActiveCfg = Debug Linux|x86
+	{C9135098-6047-8142-B10E-D27E7F73FCB3}.Debug|Linux.Build.0 = Debug Linux|x86
 	{C9135098-6047-8142-B10E-D27E7F73FCB3}.Debug|Windows.ActiveCfg = Debug Windows|Win32
 	{C9135098-6047-8142-B10E-D27E7F73FCB3}.Debug|Windows.Build.0 = Debug Windows|Win32
-	{C9135098-6047-8142-B10E-D27E7F73FCB3}.Release|Linux.ActiveCfg = Release Linux|Win32
-	{C9135098-6047-8142-B10E-D27E7F73FCB3}.Release|Linux.Build.0 = Release Linux|Win32
+	{C9135098-6047-8142-B10E-D27E7F73FCB3}.Release|Linux.ActiveCfg = Release Linux|x86
+	{C9135098-6047-8142-B10E-D27E7F73FCB3}.Release|Linux.Build.0 = Release Linux|x86
 	{C9135098-6047-8142-B10E-D27E7F73FCB3}.Release|Windows.ActiveCfg = Release Windows|Win32
 	{C9135098-6047-8142-B10E-D27E7F73FCB3}.Release|Windows.Build.0 = Release Windows|Win32
 EndGlobalSection
@@ -712,11 +712,11 @@ EndGlobalSection
 	end
 
 
-	function suite.onBuildCfgExcludedByFlag()
+	function suite.onBuildCfgExcluded()
 		platforms { "DLL", "Static" }
 		project "MyProject"
 		filter "configurations:Debug"
-		flags "ExcludeFromBuild"
+		excludefrombuild "On"
 		prepare()
 		test.capture [[
 GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -761,11 +761,11 @@ EndGlobalSection
 	end
 
 
-	function suite.onPlatformExcludedByFlag()
+	function suite.onPlatformExcluded()
 		platforms { "DLL", "Static" }
 		project "MyProject"
 		filter "platforms:Static"
-		flags "ExcludeFromBuild"
+		excludefrombuild "On"
 		prepare()
 		test.capture [[
 GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -784,6 +784,7 @@ GlobalSection(ProjectConfigurationPlatforms) = postSolution
 EndGlobalSection
 		]]
 	end
+
 
 	function suite.onExcludedBuildCfg_noPlatforms()
 		project "MyProject"

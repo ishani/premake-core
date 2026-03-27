@@ -1,7 +1,7 @@
 --
 -- premake.lua
 -- High-level helper functions for the project exporters.
--- Copyright (c) 2002-2015 Jason Perkins and the Premake project
+-- Copyright (c) 2002-2015 Jess Perkins and the Premake project
 --
 
 	local p = premake
@@ -128,10 +128,12 @@
 ---
 
 	function premake.escaper(func)
+		local existing = _esc
 		_esc = func
 		if not _esc then
 			_esc = function (value) return value end
 		end
+		return existing
 	end
 
 

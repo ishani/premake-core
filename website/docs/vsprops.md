@@ -14,17 +14,28 @@ If you want to output groups of values in any order, set multiple times.
 	}
 ```
 
+Nested values are also supported.
+
+```lua
+	vsprops {
+		Name1 = "value1",
+		Name2 = {
+			Name3 = "value3"
+		}
+	}
+```
+
 ### Parameters ###
 
 Name and value are strings
 
-### Availability ###
-
-Premake 5.0-beta3 or later.
-
 ### Applies To ###
 
-The `config` scope.
+Project configurations.
+
+### Availability ###
+
+Premake 5.0.0-beta3 or later.
 
 ### Examples ###
 

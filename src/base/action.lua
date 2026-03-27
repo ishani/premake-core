@@ -1,7 +1,7 @@
 ---
 -- action.lua
 -- Work with the list of registered actions.
--- Copyright (c) 2002-2015 Jason Perkins and the Premake project
+-- Copyright (c) 2002-2015 Jess Perkins and the Premake project
 ---
 
 	local p = premake
@@ -38,6 +38,8 @@
 --
 
 	action._list = {}
+	action._aliases = {}
+	action._deprecatedaliases = {}
 
 
 ---
@@ -68,6 +70,29 @@
 		end
 
 		action._list[act.trigger] = act
+
+		-- Add aliases table
+		if act.aliases then
+			table.foreachi(act.aliases, function(alias)
+				action._aliases[alias] = act.trigger
+			end)
+		end
+
+		-- Add deprecated aliases table
+		if act.deprecatedaliases then
+			for key, value in pairs(act.deprecatedaliases) do
+				action._deprecatedaliases[key] = value
+
+				-- Check to see if the deprecated alias is in the alias table for the action
+				if not table.contains(act.aliases, key) then
+					p.warnOnce(act.trigger .. ' missing alias',
+						"action '" .. act.trigger .. "' has a deprecated alias '" .. key .. "' that is not in the " ..
+						" 'aliases' table. This alias will be added to the 'aliases' table automatically."
+					)
+					action._aliases[key] = act.trigger
+				end
+			end
+		end
 	end
 
 
@@ -145,6 +170,11 @@
 	end
 
 
+	function action.resolvealias(name)
+		return action._aliases[name] or name
+	end
+
+
 ---
 -- Retrieve an action by name.
 --
@@ -155,7 +185,13 @@
 ---
 
 	function action.get(name)
-		return action._list[name]
+		local resolved = action.resolvealias(name)
+		return action._list[resolved]
+	end
+
+
+	function action.deprecatedalias(name)
+		return action._deprecatedaliases[name]
 	end
 
 
@@ -196,6 +232,9 @@
 		if self.onProject or self.onproject then
 			return true
 		end
+		if self.configurable then
+			return true
+		end
 		return false
 	end
 
@@ -209,12 +248,25 @@
 ---
 
 	function action.set(name)
-		_ACTION = name
+		-- If the action is an alias, resolve it to the real action
+		local resolved = action._aliases[name] or name
 
-		-- Some actions imply a particular operating system
-		local act = action.get(name)
+		-- If the action is a deprecated alias, warn the user
+		local deprecated = action._deprecatedaliases[name]
+		if deprecated then
+			local onaction = deprecated["action"]
+			if onaction ~= nil and type(onaction) == "function" then
+				onaction()
+			end
+		end
+
+		_ACTION = resolved
+
+		-- Some actions imply a particular operating system or architecture
+		local act = action.get(resolved)
 		if act then
 			_TARGET_OS = act.targetos or _TARGET_OS
+			_TARGET_ARCH =  act.targetarch or _TARGET_ARCH
 		end
 
 		-- Some are implemented in standalone modules
@@ -267,7 +319,10 @@
 -- @returns
 --    True if the toolset is supported, false otherwise.
 ---
-	function action.supportsToolset(language, toolset)
+	function action.supportsToolset(prj)
+		local language = prj.language
+		local toolset = prj.toolset
+
 		if not language or not toolset then
 			return true
 		end
@@ -279,7 +334,6 @@
 			["C"] = "cc",
 			["C++"] = "cc",
 			["C#"] = "dotnet",
-			["D"] = "dc",
 		}
 		local language_key = language_keys_map[language]
 		if not language_key then
@@ -295,6 +349,12 @@
 		end
 		toolset = p.tools.normalize(toolset)
 		toolset = toolset:explode("-", true, 1)[1] -- get rid of version
+
+		-- If the valid tools is a table, check if the toolset is in the table
+		-- If the valid tools is a function, call the function with the project. It returns a table of valid toolsets
+		if type(valid_tools) == "function" then
+			valid_tools = valid_tools(prj)
+		end
 
 		return table.contains(valid_tools, toolset)
 	end

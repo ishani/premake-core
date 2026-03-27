@@ -1,8 +1,8 @@
 ---
 -- project.lua
 -- Premake project object API
--- Author Jason Perkins
--- Copyright (c) 2011-2015 Jason Perkins and the Premake project
+-- Author Jess Perkins
+-- Copyright (c) 2011-2015 Jess Perkins and the Premake project
 ---
 
 	local p = premake
@@ -569,4 +569,23 @@
 			local values = string.explode(prj.systemversion, ":", true)
 			return values[1], values[2]
 		end
+	end
+
+
+---
+-- Retrieve the project's usage information for a particular usage.
+-- @param name
+--    The name of the usage to retrieve.
+-- @return
+--    The usage object with the specified name or nil if not found.
+---
+
+	function project.findusage(self, name)
+		for _, usage in ipairs(self.usages or self.project.usages) do
+			if name == usage.name then
+				return usage
+			end
+		end
+
+		return nil
 	end

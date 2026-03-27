@@ -1,7 +1,7 @@
 --
 -- os.lua
 -- Additions to the OS namespace.
--- Copyright (c) 2002-2014 Jason Perkins and the Premake project
+-- Copyright (c) 2002-2014 Jess Perkins and the Premake project
 --
 
 
@@ -63,44 +63,31 @@
 	end
 
 	local function get_library_search_path()
-		local path
 		if os.istarget("windows") then
-			path = os.getenv("PATH") or ""
+			return (os.getenv("PATH") or ""):explode(";")
 		elseif os.istarget("haiku") then
-			path = os.getenv("LIBRARY_PATH") or ""
+			return (os.getenv("LIBRARY_PATH") or ""):explode(":")
 		else
+			local paths
 			if os.istarget("darwin") then
-				path = os.getenv("DYLD_LIBRARY_PATH") or ""
+				paths = (os.getenv("DYLD_LIBRARY_PATH") or ""):explode(":")
 			else
-				path = os.getenv("LD_LIBRARY_PATH") or ""
+				paths = (os.getenv("LD_LIBRARY_PATH") or ""):explode(":")
 
 				for _, prefix in ipairs({"", "/opt"}) do
 					local conf_file = prefix .. "/etc/ld.so.conf"
 					if os.isfile(conf_file) then
-						for _, v in ipairs(parse_ld_so_conf(conf_file)) do
-							if (#path > 0) then
-								path = path .. ":" .. v
-							else
-								path = v
-							end
-						end
+						paths = table.join(paths, parse_ld_so_conf(conf_file))
 					end
 				end
 			end
 
-			path = path or ""
-			local archpath = "/lib:/usr/lib:/usr/local/lib"
+			local archpaths = {"/lib", "/usr/lib", "/usr/local/lib"}
 			if os.is64bit() and not (os.istarget("darwin")) then
-				archpath = "/lib64:/usr/lib64/:usr/local/lib64" .. ":" .. archpath
+				archpaths = table.join({"/lib64", "/usr/lib64/", "usr/local/lib64"}, archpaths)
 			end
-			if (#path > 0) then
-				path = path .. ":" .. archpath
-			else
-				path = archpath
-			end
+			return table.join(paths, archpaths)
 		end
-
-		return path
 	end
 
 
@@ -123,7 +110,7 @@
 --    The full path to the library if found; `nil` otherwise.
 ---
 	function os.findlib(libname, libdirs)
-		local path = get_library_search_path()
+		local paths = get_library_search_path()
 		local formats
 
 		-- assemble a search path, depending on the platform
@@ -141,25 +128,17 @@
 			table.insert(formats, "%s")
 		end
 
-		local userpath = ""
+		local userpaths = {}
 
 		if type(libdirs) == "string" then
-			userpath = libdirs
+			userpaths = {libdirs}
 		elseif type(libdirs) == "table" then
-			userpath = table.implode(libdirs, "", "", ":")
+			userpaths = libdirs
 		end
-
-		if (#userpath > 0) then
-			if (#path > 0) then
-				path = userpath .. ":" .. path
-			else
-				path = userpath
-			end
-		end
-
+		paths = table.join(userpaths, paths)
 		for _, fmt in ipairs(formats) do
 			local name = string.format(fmt, libname)
-			local result = os.pathsearch(name, path)
+			local result = os.pathsearch(name, table.unpack(paths))
 			if result then return result end
 		end
 	end
@@ -168,30 +147,21 @@
 		-- headerpath: a partial header file path
 		-- headerdirs: additional header search paths
 
-		local path = get_library_search_path()
+		local paths = get_library_search_path()
 
-		-- replace all /lib by /include
-		path = path .. ':'
-		path = path:gsub ('/lib[0-9]*([:/])', '/include%1')
-		path = path:sub (1, #path - 1)
+		-- replace all /lib and /bin by /include
+		paths = table.translate(paths, function (path) return path:gsub('[/\\]lib[0-9]*', '/include'):gsub('[/\\]bin', '/include') end)
 
-		local userpath = ""
+		local userpaths = {}
 
 		if type(headerdirs) == "string" then
-			userpath = headerdirs
+			userpaths = { headerdirs }
 		elseif type(headerdirs) == "table" then
-			userpath = table.implode(headerdirs, "", "", ":")
+			userpaths = headerdirs
 		end
+		paths = table.join(userpaths, paths)
 
-		if (#userpath > 0) then
-			if (#path > 0) then
-				path = userpath .. ":" .. path
-			else
-				path = userpath
-			end
-		end
-
-		local result = os.pathsearch (headerpath, path)
+		local result = os.pathsearch (headerpath, table.unpack(paths))
 		return result
 	end
 
@@ -201,6 +171,14 @@
 
 	function os.target()
 		return _OPTIONS.os or _TARGET_OS
+	end
+
+--
+-- Retrieve the current target architecture ID string.
+--
+
+	function os.targetarch()
+		return _OPTIONS.arch or _TARGET_ARCH
 	end
 
 	function os.get()
@@ -567,21 +545,24 @@
 
 	local builtin_rmdir = os.rmdir
 	function os.rmdir(p)
-		-- recursively remove subdirectories
-		local dirs = os.matchdirs(p .. "/*")
-		for _, dname in ipairs(dirs) do
-			local ok, err = os.rmdir(dname)
-			if not ok then
-				return ok, err
+		-- Only delete children if the path is not a symlink
+		if not os.islink(p) then
+			-- recursively remove subdirectories
+			local dirs = os.matchdirs(p .. "/*")
+			for _, dname in ipairs(dirs) do
+				local ok, err = os.rmdir(dname)
+				if not ok then
+					return ok, err
+				end
 			end
-		end
 
-		-- remove any files
-		local files = os.matchfiles(p .. "/*")
-		for _, fname in ipairs(files) do
-			local ok, err = os.remove(fname)
-			if not ok then
-				return ok, err
+			-- remove any files
+			local files = os.matchfiles(p .. "/*")
+			for _, fname in ipairs(files) do
+				local ok, err = os.remove(fname)
+				if not ok then
+					return ok, err
+				end
 			end
 		end
 
@@ -610,11 +591,11 @@
 			chdir = function(v)
 				return "cd " .. path.normalize(v)
 			end,
-			copy = function(v)
-				return "cp -rf " .. path.normalize(v)
-			end,
 			copyfile = function(v)
 				return "cp -f " .. path.normalize(v)
+			end,
+			copyfileifnewer = function(v)
+				return "cp -u " .. path.normalize(v)
 			end,
 			copydir = function(v)
 				return "cp -rf " .. path.normalize(v)
@@ -624,6 +605,40 @@
 			end,
 			echo = function(v)
 				return "echo " .. v
+			end,
+			linkdir = function(v)
+				-- split the source and target
+				-- source and target may be quoted with spaces
+				-- if the source or target was quoted, retain the quotes
+				local src, tgt = v:match("^%s*\"(.-)\"%s+\"(.-)\"%s*$")
+				if not src then
+					src, _ = v:match("^%s*(.-)%s+(.-)%s*$")
+				else
+					src = '"' .. src .. '"'
+				end
+				if not tgt then
+					_, tgt = v:match("^%s*(.-)%s+(.-)%s*$")
+				else
+					tgt = '"' .. tgt .. '"'
+				end
+				return "ln -s " .. path.normalize(tgt) .. " " .. path.normalize(src)
+			end,
+			linkfile = function(v)
+				-- split the source and target
+				-- source and target may be quoted with spaces
+				-- if the source or target was quoted, retain the quotes
+				local src, tgt = v:match("^%s*\"(.-)\"%s+\"(.-)\"%s*$")
+				if not src then
+					src, _ = v:match("^%s*(.-)%s+(.-)%s*$")
+				else
+					src = '"' .. src .. '"'
+				end
+				if not tgt then
+					_, tgt = v:match("^%s*(.-)%s+(.-)%s*$")
+				else
+					tgt = '"' .. tgt .. '"'
+				end
+				return "ln -s " .. path.normalize(tgt) .. " " .. path.normalize(src)
 			end,
 			mkdir = function(v)
 				return "mkdir -p " .. path.normalize(v)
@@ -642,23 +657,49 @@
 			chdir = function(v)
 				return "chdir " .. path.translate(path.normalize(v))
 			end,
-			copy = function(v)
-				v = path.translate(path.normalize(v))
-
-				-- Detect if there's multiple parts to the input, if there is grab the first part else grab the whole thing
-				local src = string.match(v, '^".-"') or string.match(v, '^.- ') or v
-
-				-- Strip the trailing space from the second condition so that we don't have a space between src and '\\NUL'
-				src = string.match(src, '^.*%S')
-
-				return "IF EXIST " .. src .. "\\ (xcopy /Q /E /Y /I " .. v .. " > nul) ELSE (xcopy /Q /Y /I " .. v .. " > nul)"
-			end,
 			copyfile = function(v)
 				v = path.translate(path.normalize(v))
 				-- XCOPY doesn't have a switch to assume destination is a file when it doesn't exist.
 				-- A trailing * will suppress the prompt but requires the file extensions be the same length.
 				-- Just use COPY instead, it actually works.
 				return "copy /B /Y " .. v
+			end,
+			copyfileifnewer = function(v)
+				-- A trailing * on the destination suppresses xcopy's
+				-- locale-dependent "File or Directory?" prompt (the old
+				-- "echo F |" hack only works on English Windows).
+				--
+				-- A trailing / on the destination marks it as a
+				-- directory; the source filename is appended so xcopy
+				-- sees a file-to-file copy.
+
+				-- Check for trailing / before normalize strips it.
+				local orig_dst = v:match('%S+%s*$') or ''
+				local orig_dst_bare = orig_dst:gsub('"', '')
+				local dst_is_dir = orig_dst_bare:sub(-1) == '/'
+
+				v = path.translate(path.normalize(v), "\\")
+
+				if dst_is_dir then
+					local src = string.match(v, '^".-"') or string.match(v, '^%S+')
+					local src_name = path.getname(src:gsub('"', ''))
+					-- Append source filename inside or outside closing quote.
+					-- Strip any trailing separator that survived translate.
+					if v:sub(-1) == '"' then
+						local base = v:sub(1, -2):gsub('[/\\]$', '')
+						v = base .. '\\' .. src_name .. '"'
+					else
+						v = v:gsub('[/\\]$', '') .. '\\' .. src_name
+					end
+				end
+
+				-- Put * inside the closing quote when the path is quoted.
+				if v:sub(-1) == '"' then
+					v = v:sub(1, -2) .. '*"'
+				else
+					v = v .. "*"
+				end
+				return "xcopy /D /Y " .. v
 			end,
 			copydir = function(v)
 				v = path.translate(path.normalize(v))
@@ -669,6 +710,12 @@
 			end,
 			echo = function(v)
 				return "echo " .. v
+			end,
+			linkdir = function(v)
+				return "mklink /d " .. path.translate(path.normalize(v))
+			end,
+			linkfile = function(v)
+				return "mklink " .. path.translate(path.normalize(v))
 			end,
 			mkdir = function(v)
 				v = path.translate(path.normalize(v))
@@ -804,15 +851,18 @@
 
 	os.systemTags =
 	{
-		["aix"]      = { "aix",     "posix" },
-		["bsd"]      = { "bsd",     "posix" },
-		["haiku"]    = { "haiku",   "posix" },
-		["ios"]      = { "ios",     "darwin", "posix", "mobile" },
-		["linux"]    = { "linux",   "posix" },
-		["macosx"]   = { "macosx",  "darwin", "posix" },
-		["solaris"]  = { "solaris", "posix" },
-		["uwp"]      = { "uwp", "windows" },
-		["windows"]  = { "windows", "win32" },
+		["aix"]        = { "aix",     "posix", "desktop" },
+		["android"]    = { "android", "mobile" },
+		["bsd"]        = { "bsd",     "posix", "desktop" },
+		["emscripten"] = { "emscripten", "web" },
+		["haiku"]      = { "haiku",   "posix", "desktop" },
+		["ios"]        = { "ios",     "darwin", "posix", "mobile" },
+		["linux"]      = { "linux",   "posix", "desktop" },
+		["macosx"]     = { "macosx",  "darwin", "posix", "desktop" },
+		["solaris"]    = { "solaris", "posix", "desktop" },
+		["tvos"]       = { "tvos",    "darwin", "posix", "mobile" },
+		["uwp"]        = { "uwp", "windows", "desktop" },
+		["windows"]    = { "windows", "win32", "desktop" },
 	}
 
 	function os.getSystemTags(name)

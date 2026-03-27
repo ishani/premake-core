@@ -1,7 +1,7 @@
 --
 -- config.lua
 -- Premake configuration object API
--- Copyright (c) 2011-2015 Jason Perkins and the Premake project
+-- Copyright (c) 2011-2015 Jess Perkins and the Premake project
 --
 
 	local p = premake
@@ -44,26 +44,28 @@
 		local prefix = cfg[field.."prefix"] or cfg.targetprefix or ""
 		local suffix = cfg[field.."suffix"] or cfg.targetsuffix or ""
 		local extension = cfg[field.."extension"] or cfg.targetextension or ""
+		local bundleextension = cfg[field.."bundleextension"] or cfg.targetbundleextension or ""
 
 		local bundlename = ""
 		local bundlepath = ""
 
 		if table.contains(os.getSystemTags(cfg.system), "darwin") and (kind == p.WINDOWEDAPP or (kind == p.SHAREDLIB and cfg.sharedlibtype)) then
-			bundlename = basename .. extension
+			bundlename = basename .. bundleextension
 			bundlepath = path.join(bundlename, iif(kind == p.SHAREDLIB and cfg.sharedlibtype == "OSXFramework", "Versions/A", "Contents/MacOS"))
 		end
 
 		local info = {}
-		info.directory  = directory
-		info.basename   = basename .. suffix
-		info.name       = prefix .. info.basename .. extension
-		info.extension  = extension
-		info.abspath    = path.join(directory, info.name)
-		info.fullpath   = info.abspath
-		info.bundlename = bundlename
-		info.bundlepath = path.join(directory, bundlepath)
-		info.prefix     = prefix
-		info.suffix     = suffix
+		info.directory       = directory
+		info.basename        = basename .. suffix
+		info.name            = prefix .. info.basename .. extension
+		info.extension       = extension
+		info.bundleextension = bundleextension
+		info.abspath         = path.join(directory, info.name)
+		info.fullpath        = info.abspath
+		info.bundlename      = bundlename
+		info.bundlepath      = path.join(directory, bundlepath)
+		info.prefix          = prefix
+		info.suffix          = suffix
 		return info
 	end
 
@@ -150,9 +152,16 @@
 --
 
 	function config.canLinkIncremental(cfg)
+		-- Explicit "On" overrides all other checks
+		if cfg.incrementallink == p.ON then
+			return true
+		end
+		
 		if cfg.kind == "StaticLib"
 				or config.isOptimizedBuild(cfg)
-				or cfg.flags.NoIncrementalLink then
+				or cfg.incrementallink == p.OFF
+				or cfg.linktimeoptimization == p.ON
+				or cfg.linktimeoptimization == "Fast" then
 			return false
 		end
 		return true
@@ -206,7 +215,7 @@
 		-- is provided, change the kind as import libraries are static.
 		local kind = cfg.kind
 		if project.isnative(cfg.project)  then
-			if cfg.system == p.WINDOWS and kind == p.SHAREDLIB and not cfg.flags.NoImportLib then
+			if cfg.system == p.WINDOWS and kind == p.SHAREDLIB and cfg.useimportlib ~= p.OFF then
 				kind = p.STATICLIB
 			end
 		end
@@ -251,7 +260,7 @@
 
 		if part == "directory" then
 			table.foreachi(cfg.libdirs, function(dir)
-				table.insert(result, project.getrelative(cfg.project, dir))
+				table.insert(result, p.tools.getrelative(cfg.project, dir))
 			end)
 		end
 
@@ -264,11 +273,8 @@
 
 			-- Strip linking decorators from link, to determine if the link
 			-- is a "sibling" project.
-			local endswith = function(s, ptrn)
-				return ptrn == string.sub(s, -string.len(ptrn))
-			end
 			local name = link
-			if endswith(name, ":static") or endswith(name, ":shared") then
+			if name:endswith(":static") or name:endswith(":shared") then
 				name = string.sub(name, 0, -8)
 			end
 
@@ -288,7 +294,7 @@
 					if part == "object" then
 						item = prjcfg
 					else
-						item = project.getrelative(cfg.project, prjcfg.linktarget.fullpath)
+						item = p.tools.getrelative(cfg.project, prjcfg.linktarget.fullpath)
 					end
 
 				end
@@ -303,7 +309,7 @@
 					-- system library or assembly), make it project-relative
 					item = link
 					if item:find("/", nil, true) then
-						item = project.getrelative(cfg.project, item)
+						item = p.tools.getrelative(cfg.project, item)
 					end
 				end
 
@@ -337,6 +343,26 @@
 		return result
 	end
 
+--
+-- Return list of (non-decorated) wholearchive fullpath
+--
+
+	function config.getwholearchive(cfg)
+		local getfullpath = function(libraryname)
+			local prj = p.workspace.findproject(cfg.workspace, libraryname)
+			local prjcfg = prj and project.getconfig(prj, cfg.buildcfg, cfg.platform)
+			if prj and config.canLink(cfg, prjcfg) then -- is sibling project
+				return p.tools.getrelative(cfg.project, prjcfg.linktarget.fullpath)
+			else
+				if path.isabsolute(libraryname) then
+					return libraryname
+				else
+					return p.tools.getrelative(cfg.project, libraryname)
+				end
+			end
+		end
+		return table.translate(cfg.wholearchive, getfullpath)
+	end
 
 --
 -- Returns the list of sibling target directories
@@ -445,7 +471,7 @@
 --
 
 	function config.isCopyLocal(cfg, linkname, default)
-		if cfg.flags.NoCopyLocal then
+		if cfg.allowcopylocal == p.OFF then
 			return false
 		end
 
@@ -574,7 +600,7 @@
 				-- result if the corresponding value is not present
 
 				for key, replacement in pairs(map) do
-					if #key > 1 and key:startswith("_") then
+					if type(key) == "string" and #key > 1 and key:startswith("_") then
 						key = key:sub(2)
 						if values[key] == nil then
 							add(replacement)
